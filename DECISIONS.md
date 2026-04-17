@@ -69,6 +69,22 @@ Workflow :
 5. Verifier que bun dev fonctionne
 6. PR vers notre main (ou merge direct si perso)
 
+## D-007 : Ajout @maison-3d/ha-bridge dans apps/editor/package.json
+Date : 2026-04-17
+
+Modification du fichier Pascal `apps/editor/package.json` pour ajouter la
+dependance interne `"@maison-3d/ha-bridge": "*"`.
+
+Rationale :
+- Indispensable pour consommer notre package ha-bridge depuis l'app editor
+- Aucune autre solution propre : Next.js doit pouvoir resoudre l'import
+- Une seule ligne ajoutee dans la liste des dependencies (alphabetique)
+
+Consequence :
+- En cas de merge upstream sur apps/editor/package.json, garder notre ligne
+  `"@maison-3d/ha-bridge": "*"` (privilegier `--theirs` puis re-ajouter cette
+  ligne, ou faire un merge manuel)
+
 ## D-006 : Ecrasement du CLAUDE.md de Pascal
 Date : 2026-04-17
 
