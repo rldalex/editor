@@ -123,20 +123,47 @@ type RegisteredBinding = {
 }
 
 const registered = new Map<string, RegisteredBinding>()   // bindingKey → reg
-const pending    = new Set<string>()                       // bindingKeys à retry
+const pending    = new Map<string, number>()              // bindingKey → firstSeen (ms)
 ```
 
-### 4.3 Cycle de vie — mount
+`pending` est une seule `Map` qui combine "à retraiter" + "depuis quand" :
+`pending.has(key)` teste l'inclusion, `now - pending.get(key)` donne l'âge,
+`pending.delete(key)` nettoie. Évite la désynchro d'une structure séparée.
+
+### 4.3 Cycle de vie — mount + réactivité aux modifs de mapping
+
+Le système doit réagir à trois classes de changements dans `useScene` :
+1. **Ajout de node** (import scène, création item) → registerBinding pour les
+   bindings HA présents.
+2. **Suppression de node** → unregisterBinding pour nettoyer les subs HA et
+   purger `pending` / `registered`.
+3. **Modification de `metadata.ha`** sur un node existant (user édite le panel
+   de mapping) → diff prev/next et re-register ce qui a changé. C'est le
+   chemin qui permet au user de corriger une typo `nodeId` / `entityId`
+   après l'abandon 30s (§4.8) sans unmount complet du system.
 
 ```ts
 useEffect(() => {
-  // 1. Pour chaque ItemNode avec mapping emissive, registerBinding(...)
-  // 2. Subscribe scene store (Pascal) pour les ajouts/retraits futurs
-  const unsubScene = useScene.subscribe(drainPending)
-  // 3. Polling safety 500ms — cas B de la race mount (non-déterministe)
+  // Snapshot initial
+  let prevMappings = collectHAMappings(useScene.getState().nodes)
+  for (const [nodeId, bindings] of prevMappings) {
+    for (const b of bindings) registerBinding(nodeId, b)
+  }
+
+  // Subscribe unique : gère 1/ drainPending 2/ diff de mappings
+  const unsubScene = useScene.subscribe((state) => {
+    if (pending.size > 0) drainPending()
+    const nextMappings = collectHAMappings(state.nodes)
+    reconcileMappings(prevMappings, nextMappings)
+    prevMappings = nextMappings
+  })
+
+  // Polling safety 500ms — cas B de la race mount (non-déterministe)
   const timer = setInterval(drainPending, 500)
-  // 4. Cas A explicite : drain une fois après tout le setup, idempotent
+
+  // Cas A explicite : drain une fois après tout le setup, idempotent
   drainPending()
+
   return () => {
     clearInterval(timer)
     unsubScene()
@@ -147,11 +174,34 @@ useEffect(() => {
 }, [])
 ```
 
+`collectHAMappings` produit une `Map<nodeId, HAEntityBinding[]>` stable par
+itération. `reconcileMappings(prev, next)` compare les deux maps :
+- Node présent dans `next` et pas dans `prev` → registerBinding pour chaque
+  binding.
+- Node présent dans `prev` et pas dans `next` → unregisterBinding pour
+  chaque binding.
+- Node présent des deux côtés → pour chaque `bindingKey = ${nodeId}::${kind}`,
+  si la shape a changé (comparaison structurelle shallow suffit), `registerBinding`
+  en mode last-wins (§4.4 le gère déjà).
+
+Ça ferme la boucle avec §4.8 : quand l'user corrige un typo `nodeId` dans
+le panel HA, le `useScene.setState` du panel déclenche
+`reconcileMappings` → l'ancien bindingKey (avec typo) est unregister
+naturellement par le diff, le nouveau est register proprement.
+
 ### 4.4 `registerBinding(nodeId, binding)`
 
 ```ts
 function registerBinding(nodeId, binding) {
-  if (binding.visual?.kind !== 'emissive') return   // v1 emissive-only
+  if (binding.visual?.kind !== 'emissive') {
+    if (binding.visual) {
+      console.warn(
+        `HAVisualSystem: visual kind '${binding.visual.kind}' not yet ` +
+        `supported in v1 (binding on ${nodeId}), skipping`
+      )
+    }
+    return
+  }
 
   const key = `${nodeId}::${binding.visual.kind}`
 
@@ -272,20 +322,37 @@ console.log(a.emissive.getHex(), b.emissive.getHex())
 //           ref Color, fallback `mat.emissive = mat.emissive.clone()` requis.
 ```
 
-### 4.7 `drainPending()`
+### 4.7 `drainPending()` + abandon à 30s
 
 ```ts
+const PENDING_TIMEOUT_MS = 30_000
+
 function drainPending() {
   if (pending.size === 0) return
-  for (const key of [...pending]) {
+  const now = performance.now()
+
+  for (const [key, firstSeen] of pending) {
     const reg = registered.get(key)
     if (!reg) { pending.delete(key); continue }
 
     const targets = resolveTargets(reg.nodeId)
-    if (targets === null) continue       // still not ready
+    if (targets === null) {
+      // Timeout : abandon visible, pas de polling éternel.
+      if (now - firstSeen > PENDING_TIMEOUT_MS) {
+        console.error(
+          `HAVisualSystem: binding ${key} never resolved ` +
+          `(nodeId=${reg.nodeId}, entity=${reg.binding.entityId}) — check nodeId`
+        )
+        reg.unsubHA()
+        pending.delete(key)
+        registered.delete(key)
+      }
+      continue
+    }
 
     reg.targets = targets
-    // Re-lit l'état HA au drain, PAS un snapshot stocké
+    // Re-lit l'état HA au drain, PAS un snapshot stocké (peut avoir changé
+    // pendant que le node n'était pas monté).
     const current = haStore.getState().states[reg.binding.entityId]?.state
     applyVisual(reg, undefined, current)
     pending.delete(key)
@@ -293,25 +360,15 @@ function drainPending() {
 }
 ```
 
-### 4.8 Abandon à 30s
+L'abandon détruit le runtime state du binding, mais **pas** le
+`metadata.ha` du node dans `useScene`. Quand l'utilisateur corrige la typo
+dans le panel HA, le diff `reconcileMappings` (§4.3) détecte la shape
+changée et re-register en mode last-wins. Le cycle repart propre.
 
-Compteur `firstPending: Map<bindingKey, timestamp>`. Dans `drainPending`, si
-`now - firstPending.get(key) > 30000` :
+Timer `setInterval` garde `drainPending` en vie même après abandon : il
+s'auto-court-circuite via `pending.size === 0` jusqu'au prochain push.
 
-```ts
-console.error(
-  `HAVisualSystem: binding ${key} never resolved ` +
-  `(nodeId=${reg.nodeId}, entity=${reg.binding.entityId}) — check nodeId`
-)
-reg.unsubHA()
-pending.delete(key)
-registered.delete(key)
-firstPending.delete(key)
-```
-
-Timer `setInterval` s'auto-stop quand `pending.size === 0` (guard en début).
-
-### 4.9 `scheduleInvalidate()` — coalescing
+### 4.8 `scheduleInvalidate()` — coalescing
 
 ```ts
 let invalidateScheduled = false
@@ -442,51 +499,70 @@ La clé debounce inclut `entityId` : si un node a plusieurs bindings (ex. tap
 toggle une lampe + tap increment un dimmer sur un autre entityId), chaque
 paire (binding, trigger) a sa propre fenêtre de debounce.
 
-### 5.6 Long-press construit
+### 5.6 Long-press construit (multi-touch safe)
 
 ```ts
 const LONG_PRESS_MS = 500
 const MOVE_THRESHOLD_PX = 8
 
-let pressState: {
+type PressEntry = {
   nodeId: string
   startX: number
   startY: number
   timer: ReturnType<typeof setTimeout>
-} | null = null
+}
+
+// Keyé par pointerId natif — obligatoire sur kiosque tablette où plusieurs
+// doigts/paumes touchent l'écran simultanément. Un state global unique
+// écraserait les timers et déclencherait des long-press fantômes.
+const pressState = new Map<number, PressEntry>()
 
 emitter.on('item:pointerdown', (e) => {
+  const pid = e.nativeEvent.nativeEvent.pointerId
   const x = e.nativeEvent.nativeEvent.clientX
   const y = e.nativeEvent.nativeEvent.clientY
   const nodeId = e.node.id
   const mapping = getHAMapping(e.node)
   if (!mapping) return
 
-  pressState = {
-    nodeId, startX: x, startY: y,
-    timer: setTimeout(() => {
-      for (const b of mapping.bindings) {
-        if (b.longPressAction) fireAction(nodeId, b, 'longPress', b.longPressAction)
-      }
-      pressState = null
-    }, LONG_PRESS_MS),
-  }
+  const timer = setTimeout(() => {
+    for (const b of mapping.bindings) {
+      if (b.longPressAction) fireAction(nodeId, b, 'longPress', b.longPressAction)
+    }
+    pressState.delete(pid)
+  }, LONG_PRESS_MS)
+
+  pressState.set(pid, { nodeId, startX: x, startY: y, timer })
 })
 
 emitter.on('item:move', (e) => {
-  if (!pressState) return
-  const dx = e.nativeEvent.nativeEvent.clientX - pressState.startX
-  const dy = e.nativeEvent.nativeEvent.clientY - pressState.startY
+  const pid = e.nativeEvent.nativeEvent.pointerId
+  const ps = pressState.get(pid)
+  if (!ps) return
+  const dx = e.nativeEvent.nativeEvent.clientX - ps.startX
+  const dy = e.nativeEvent.nativeEvent.clientY - ps.startY
   if (Math.hypot(dx, dy) > MOVE_THRESHOLD_PX) {
-    clearTimeout(pressState.timer)
-    pressState = null
+    clearTimeout(ps.timer)
+    pressState.delete(pid)
   }
 })
 
-emitter.on('item:pointerup', () => {
-  if (pressState) {
-    clearTimeout(pressState.timer)
-    pressState = null
+emitter.on('item:pointerup', (e) => {
+  const pid = e.nativeEvent.nativeEvent.pointerId
+  const ps = pressState.get(pid)
+  if (ps) {
+    clearTimeout(ps.timer)
+    pressState.delete(pid)
+  }
+})
+
+// item:pointerleave doit aussi nettoyer (ex: doigt glisse hors du mesh)
+emitter.on('item:leave', (e) => {
+  const pid = e.nativeEvent.nativeEvent.pointerId
+  const ps = pressState.get(pid)
+  if (ps) {
+    clearTimeout(ps.timer)
+    pressState.delete(pid)
   }
 })
 
@@ -502,12 +578,17 @@ emitter.on('item:click', (e) => {
 
 ### 5.7 Feedback visuel non-state au tap
 
+Effet : le **Group** entier du node (luminaire complet, pas les meshes
+filtrés par regex emissive) pulse 1.0 → 1.05 → 1.0 en 150ms. Scale
+uniforme sur les 3 axes via `group.scale.setScalar(v)`. Cible =
+`sceneRegistry.nodes.get(nodeId)`.
+
 ```ts
 function triggerVisualFeedback(nodeId) {
   const group = sceneRegistry.nodes.get(nodeId)
   if (!group) return
   animationManager.push({
-    id: `feedback::${nodeId}::${performance.now()}`,
+    id: `feedback::${nodeId}`,   // unique par node → cancel+replace auto sur spam-tap
     nodeId,
     property: 'scale',
     from: 1.0,
@@ -515,13 +596,19 @@ function triggerVisualFeedback(nodeId) {
     duration: 75,
     easing: 'easeOutCubic',
     onComplete: () => animationManager.push({
-      // ... reverse vers 1.0
+      id: `feedback::${nodeId}`,
+      nodeId,
+      property: 'scale',
+      from: 1.05,
+      to: 1.0,
+      duration: 75,
+      easing: 'easeInOutCubic',
     }),
   })
 }
 ```
 
-Feedback instantané "tap reçu", découplé de PHASE 5. Animation gérée par
+Feedback instantané "tap reçu", découplé de PHASE 5. Géré par
 `animationManager` partagé.
 
 ---
@@ -559,7 +646,7 @@ function tick(now) {
     const t = clamp((now - anim.startTime) / anim.duration, 0, 1)
     const eased = applyEasing(t, anim.easing)
     anim.currentValue = lerp(anim.from, anim.to, eased)
-    applyToMesh(anim)   // mute directement
+    applyToTarget(anim)   // mute directement selon la property
     if (t === 1) {
       active.delete(anim.id)
       anim.onComplete?.()
@@ -569,6 +656,26 @@ function tick(now) {
   raf = active.size > 0 ? requestAnimationFrame(tick) : null
 }
 ```
+
+**Résolution cible selon la property** :
+
+| property | target | mutation |
+|---|---|---|
+| `scale` | Group (`sceneRegistry.nodes.get(nodeId)`) | `group.scale.setScalar(value)` |
+| `emissive` | meshes filtrés (via `RegisteredBinding.targets`) | pour chaque mesh : `mesh.material.emissive.copy(value)` |
+| `emissiveIntensity` | meshes filtrés | pour chaque mesh : `mesh.material.emissiveIntensity = value` |
+
+`scale` agit sur le Group entier (pulse de tout l'item, pertinent pour un
+feedback "tap reçu" visible). `emissive` et `emissiveIntensity` agissent sur
+les meshes filtrés par `target-resolver` (seuls les ampoules/abat-jour
+glowent, pas le support métallique).
+
+Pour résoudre `anim.target` au push :
+- si `property === 'scale'` → `sceneRegistry.nodes.get(nodeId)` directement
+- si `property === 'emissive'` / `emissiveIntensity'` → `registered.get(bindingKey)?.targets`
+
+L'API push exige soit `nodeId` (pour scale) soit `bindingKey` (pour les
+properties matériau). Documenté dans le module.
 
 V1 emissive passe par mutation directe (pas d'animation) pour garder le flux
 simple. Feedback au tap passe par `animationManager`. Plus tard
@@ -646,7 +753,7 @@ les systems R3F). Validation manuelle via `/ha-test` :
 | Race mount (useLayoutEffect vs subscribe) | haute | Polling 500ms + `drainPending()` explicite post-mount |
 | Ordre des events `pointerdown` vs `click` Pascal | faible | Debounce 300ms absorbe les doubles-fires |
 | Fuite matériaux clonés | certaine mais équivalente à Pascal | Backlog P2, alignement sur cleanup upstream |
-| HA WS reconnect → rafale d'events | moyenne | `fireImmediately` + debounce absorbe |
+| HA WS reconnect → rafale de `patchState` | moyenne | `scheduleInvalidate()` coalesce en 1 repaint microtask (§4.8) ; les mutations mesh restent batchées ; debounce action (§5.5) ne s'applique pas ici |
 | Kiosque tablette : GPU chauffe | faible | `invalidate()` partout, compatible `frameloop="demand"` |
 
 ---
