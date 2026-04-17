@@ -35,6 +35,7 @@
     "@types/node": "^22.19.12",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
+    "@types/three": "^0.183.0",
     "agentation": "^2.3.2",
     "react-grab": "^0.1.25",
     "react-scan": "^0.5.3",
