@@ -21,6 +21,14 @@ test.
 
 **Spec référence:** `docs/superpowers/specs/2026-04-18-ha-visual-interaction-systems-design.md`
 
+**Invariants verified upfront (pre-Task 1) :**
+- Pascal emits `item:leave` (confirmed in `packages/core/src/events/bus.ts:65`
+  — `leave` is in `eventSuffixes`).
+- `MeshStandardNodeMaterial` has no custom `emissiveNode` in Pascal's
+  `baseMaterial` (`packages/core/src/materials.ts:6-10`) — plain `emissive`
+  Color inherited from `Material`. Task 1 smoke test confirms `.clone()`
+  isolates it per-instance.
+
 ---
 
 ## File Structure
@@ -229,9 +237,13 @@ import { animationManager } from './animation-manager'
 describe('animation-manager', () => {
   beforeEach(() => animationManager._reset())
 
+  // Tests use _pushAt + _tickAt to inject deterministic timestamps. The
+  // module-level `performance.now()` would otherwise make results depend
+  // on real wall-clock between push and tick calls.
+
   test('push then tick progresses value toward target', () => {
     let observed = 0
-    animationManager.push({
+    animationManager._pushAt({
       id: 'a',
       nodeId: 'n1',
       property: 'scale',
@@ -240,7 +252,7 @@ describe('animation-manager', () => {
       duration: 100,
       easing: 'linear',
       target: { set: (v: number) => { observed = v } },
-    })
+    }, 0)
     animationManager._tickAt(0)
     expect(observed).toBeCloseTo(1.0, 3)
     animationManager._tickAt(50)
@@ -252,30 +264,29 @@ describe('animation-manager', () => {
   test('same id cancels and replaces, from = current value', () => {
     let observed = 0
     const target = { set: (v: number) => { observed = v } }
-    animationManager.push({
+    animationManager._pushAt({
       id: 'a', nodeId: 'n1', property: 'scale',
       from: 1.0, to: 2.0, duration: 100, easing: 'linear', target,
-    })
+    }, 0)
     animationManager._tickAt(50) // observed ~= 1.5
-    animationManager.push({
+    animationManager._pushAt({
       id: 'a', nodeId: 'n1', property: 'scale',
       from: 1.0, to: 0.0, duration: 100, easing: 'linear', target,
-    })
-    // After replace, from should be adjusted to currentValue (~1.5)
-    animationManager._tickAt(50) // 0ms into new anim at start time = 50
+    }, 50)
+    animationManager._tickAt(50) // 0ms into new anim → still 1.5
     expect(observed).toBeCloseTo(1.5, 2)
-    animationManager._tickAt(150) // 100ms into new anim
+    animationManager._tickAt(150) // 100ms into new anim → 0.0
     expect(observed).toBeCloseTo(0.0, 2)
   })
 
   test('onComplete fires at t=1 and anim is removed', () => {
     let completed = false
-    animationManager.push({
+    animationManager._pushAt({
       id: 'a', nodeId: 'n1', property: 'scale',
       from: 0, to: 1, duration: 100, easing: 'linear',
       target: { set: () => {} },
       onComplete: () => { completed = true },
-    })
+    }, 0)
     animationManager._tickAt(100)
     expect(completed).toBe(true)
     expect(animationManager._activeCount()).toBe(0)
@@ -283,21 +294,21 @@ describe('animation-manager', () => {
 
   test('easeOutCubic reaches exactly 1 at t=1', () => {
     let observed = 0
-    animationManager.push({
+    animationManager._pushAt({
       id: 'a', nodeId: 'n1', property: 'scale',
       from: 0, to: 1, duration: 100, easing: 'easeOutCubic',
       target: { set: (v: number) => { observed = v } },
-    })
+    }, 0)
     animationManager._tickAt(100)
     expect(observed).toBeCloseTo(1, 5)
   })
 
-  test('empty active stops RAF (no leak)', () => {
-    animationManager.push({
+  test('empty active stops RAF (no leak, no real RAF scheduled in test mode)', () => {
+    animationManager._pushAt({
       id: 'a', nodeId: 'n1', property: 'scale',
       from: 0, to: 1, duration: 100, easing: 'linear',
       target: { set: () => {} },
-    })
+    }, 0)
     animationManager._tickAt(100)
     expect(animationManager._rafId()).toBe(null)
   })
@@ -341,6 +352,7 @@ type ActiveAnim = AnimationSpec & { startTime: number; currentValue: number }
 const active = new Map<string, ActiveAnim>()
 let rafId: number | null = null
 let invalidateFn: () => void = () => {}
+let testMode = false // when true, tickAt does not schedule real RAF
 
 function applyEasing(t: number, easing: Easing): number {
   if (easing === 'linear') return t
@@ -370,7 +382,24 @@ function tickAt(now: number) {
   invalidateFn()
   if (active.size === 0) {
     rafId = null
-  } else {
+  } else if (!testMode) {
+    rafId = requestAnimationFrame((t) => tickAt(t))
+  }
+  // In testMode, we never schedule a real RAF — tests drive ticks manually
+  // via _tickAt. Without this guard, a real frame races with the test and
+  // mutates state between assertions.
+}
+
+function pushInternal(spec: AnimationSpec, startTime: number) {
+  const existing = active.get(spec.id)
+  const from = existing ? existing.currentValue : spec.from
+  active.set(spec.id, {
+    ...spec,
+    from,
+    startTime,
+    currentValue: from,
+  })
+  if (rafId === null && !testMode) {
     rafId = requestAnimationFrame((t) => tickAt(t))
   }
 }
@@ -380,31 +409,24 @@ export const animationManager = {
     invalidateFn = fn
   },
   push(spec: AnimationSpec) {
-    const existing = active.get(spec.id)
-    const now = performance.now()
-    const from = existing ? existing.currentValue : spec.from
-    active.set(spec.id, {
-      ...spec,
-      from,
-      startTime: now,
-      currentValue: from,
-    })
-    if (rafId === null) {
-      rafId = requestAnimationFrame((t) => tickAt(t))
-    }
+    pushInternal(spec, performance.now())
   },
   // Test-only helpers (underscore-prefixed so consumer code doesn't touch)
   _reset() {
     active.clear()
-    if (rafId !== null) {
+    if (rafId !== null && rafId !== 0) {
       cancelAnimationFrame(rafId)
-      rafId = null
     }
+    rafId = null
     invalidateFn = () => {}
+    testMode = false
+  },
+  _pushAt(spec: AnimationSpec, now: number) {
+    testMode = true
+    pushInternal(spec, now)
   },
   _tickAt(now: number) {
-    // When test drives ticks manually, disable real RAF scheduling
-    rafId = 0
+    testMode = true
     tickAt(now)
   },
   _activeCount() {
@@ -1141,6 +1163,14 @@ export function HAVisualSystem() {
     const registered = new Map<string, RegisteredBinding>()
     const pending = new Map<string, number>() // bindingKey → firstSeen timestamp
 
+    // Key includes entityId so multiple emissive bindings on the same node
+    // (e.g. a lamp with two independent bulbs, each bound to a different
+    // HA light entity) are tracked separately. Last-wins applies at the
+    // (node, kind, entity) level — editing a binding's color in the panel
+    // triggers onChange which unregister+re-register same key.
+    const makeKey = (nodeId: AnyNodeId, binding: HAEntityBinding) =>
+      `${nodeId}::${binding.visual?.kind}::${binding.entityId}`
+
     function registerBinding(nodeId: AnyNodeId, binding: HAEntityBinding) {
       if (binding.visual?.kind !== 'emissive') {
         if (binding.visual) {
@@ -1152,7 +1182,7 @@ export function HAVisualSystem() {
         return
       }
 
-      const key = `${nodeId}::${binding.visual.kind}`
+      const key = makeKey(nodeId, binding)
 
       const existing = registered.get(key)
       if (existing) {
@@ -1186,7 +1216,7 @@ export function HAVisualSystem() {
 
     function unregisterBinding(nodeId: AnyNodeId, binding: HAEntityBinding) {
       if (binding.visual?.kind !== 'emissive') return
-      const key = `${nodeId}::${binding.visual.kind}`
+      const key = makeKey(nodeId, binding)
       const reg = registered.get(key)
       if (!reg) return
       reg.unsubHA()
