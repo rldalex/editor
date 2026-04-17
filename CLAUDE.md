@@ -3,12 +3,21 @@
 Fork perso de github.com/pascalorg/editor pour construire ma maison en 3D et la
 connecter a Home Assistant.
 
+## Statut actuel (2026-04-17)
+
+- PHASE 0 (bootstrap) : DONE, sur main (commit 0e887e0, pushé)
+- PHASE 1 (ha-bridge package + POC) : DONE, sur branche feat/ha-bridge
+  (commits da60207, 0d6e2a3) — pas encore mergée dans main
+- POC validé : /ha-test charge 2107 entités HA + toggles fonctionnels
+- Prochaine étape suggérée par BRIEF : PHASE 3-4-5 (mapping HA dans l'éditeur 3D)
+
 ## Commandes essentielles (heritees de Pascal)
 
-- `bun dev` : dev server (Turborepo watch packages + Next.js editor)
+- `bun dev` : dev server (port editor = **3002**, pas 3000)
 - `turbo build` : build tous les packages
 - `turbo build --filter=@pascal-app/core` : build un package specifique
 - `bun install` : install deps
+- POC HA : http://localhost:3002/ha-test (apres `bun dev`)
 
 ## Architecture du monorepo
 
