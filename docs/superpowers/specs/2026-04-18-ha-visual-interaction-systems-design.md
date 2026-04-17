@@ -77,6 +77,7 @@ apps/editor/ha/systems/
 ├── emissive-visual.ts          # helpers mutation material.emissive
 ├── action-handlers.ts          # dispatcher toggle / call_service
 ├── target-resolver.ts          # regex /glow|emissive|_emit$/i + fallback Group
+├── mapping-registry.ts         # collectHAMappings + reconcileMappings (partagé)
 └── index.ts
 ```
 
@@ -151,6 +152,16 @@ useEffect(() => {
   }
 
   // Subscribe unique : gère 1/ drainPending 2/ diff de mappings
+  //
+  // TODO PHASE 5.1 : undo/redo zundo peut faire disparaître+réapparaître un
+  // node avec même nodeId + même binding shape dans le même tick. Le diff
+  // actuel juge "rien n'a changé" mais reg.targets pointe vers des meshes
+  // orphelins (ancienne instance Three.js). Probabilité faible, impact
+  // visible (lampe stuck). Fix 3 lignes dans reconcileMappings :
+  //   if (reg.targets && reg.targets[0]?.parent !== sceneRegistry.nodes.get(id)) {
+  //     reg.targets = null
+  //     pending.set(reg.bindingKey, performance.now())
+  //   }
   const unsubScene = useScene.subscribe((state) => {
     if (pending.size > 0) drainPending()
     const nextMappings = collectHAMappings(state.nodes)
@@ -391,10 +402,93 @@ Un tick HA Zustand → N mutations synchrones dans N listeners → 1
 
 ### 5.1 Vue d'ensemble
 
-Monté hors `<Canvas>`. Au mount, s'abonne au bus mitt Pascal pour
-`item:click`, `item:pointerdown`, `item:pointerup`, `item:move`. Pour chaque
-event, lookup le mapping HA du node via `getHAMapping`, extrait `tapAction` /
-`longPressAction`, dispatch via `HANDLERS`.
+Monté hors `<Canvas>`, symétrique à `HAVisualSystem`. Au mount :
+
+1. **Phase de registration** : utilise `collectHAMappings` + `reconcileMappings`
+   partagés (module `mapping-registry.ts`) pour parcourir tous les
+   `ItemNode` avec mapping HA. Pour chaque `tapAction` et `longPressAction`,
+   valide la shape au registration : kind dans `HANDLERS` truthy, domain dans
+   `TOGGLE_DOMAINS` si `kind === 'toggle'`. Les bindings invalides loguent
+   **une fois** à l'enregistrement — pas 50 fois au 50e tap.
+2. **Subscribe bus mitt Pascal** : `item:click`, `item:pointerdown`,
+   `item:pointerup`, `item:move`, `item:leave`. Handler event-time =
+   lookup `actionRegistry.get(nodeId)` (rempli à la phase 1) et fire si
+   valide.
+
+```ts
+type RegisteredAction = {
+  bindingKey: string        // `${nodeId}::${entityId}`
+  binding: HAEntityBinding
+  validTap: boolean         // false si tapAction.kind invalide
+  validLongPress: boolean
+}
+const actionRegistry = new Map<string, RegisteredAction[]>()   // nodeId → actions
+
+useEffect(() => {
+  let prev = collectHAMappings(useScene.getState().nodes)
+  for (const [nodeId, bindings] of prev) {
+    for (const b of bindings) registerAction(nodeId, b)
+  }
+
+  const unsubScene = useScene.subscribe((state) => {
+    const next = collectHAMappings(state.nodes)
+    reconcileMappings(prev, next, {
+      onAdd: registerAction,
+      onRemove: unregisterAction,
+      onChange: (nodeId, b) => { unregisterAction(nodeId, b); registerAction(nodeId, b) },
+    })
+    prev = next
+  })
+
+  // ... bus mitt subscribes (cf §5.6)
+
+  return () => {
+    unsubScene()
+    actionRegistry.clear()
+    // ... unsub bus
+  }
+}, [])
+```
+
+`registerAction` pré-valide au mount :
+
+```ts
+function registerAction(nodeId, binding) {
+  const rec: RegisteredAction = {
+    bindingKey: `${nodeId}::${binding.entityId}`,
+    binding,
+    validTap: validateAction(nodeId, binding, 'tap', binding.tapAction),
+    validLongPress: validateAction(nodeId, binding, 'longPress', binding.longPressAction),
+  }
+  const list = actionRegistry.get(nodeId) ?? []
+  list.push(rec)
+  actionRegistry.set(nodeId, list)
+}
+
+function validateAction(nodeId, binding, trigger, action): boolean {
+  if (!action || action.kind === 'none') return false
+  if (HANDLERS[action.kind] === null) {
+    console.error(
+      `HAInteractionSystem: ${trigger}Action kind '${action.kind}' not ` +
+      `implemented in v1 (binding on ${nodeId}, entity=${binding.entityId}). ` +
+      `Supported: toggle, call_service, none.`
+    )
+    return false
+  }
+  if (action.kind === 'toggle' && !TOGGLE_DOMAINS.has(binding.domain)) {
+    console.error(
+      `HAInteractionSystem: toggle not supported for domain ` +
+      `'${binding.domain}' on ${binding.entityId}. Use call_service instead.`
+    )
+    return false
+  }
+  return true
+}
+```
+
+Les fires event-time (§5.6) consultent `rec.validTap` / `rec.validLongPress`
+et skip silencieusement si false — la log d'erreur a déjà été émise au
+registration, pas de spam.
 
 ### 5.2 Dispatcher
 
@@ -410,12 +504,16 @@ const HANDLERS: Record<HAAction['kind'], ActionHandler | null> = {
 }
 ```
 
-Au registration d'un binding, si `tapAction.kind` ou `longPressAction.kind`
-pointe sur `null` → `console.error` explicite + skip ce trigger (le binding
-peut avoir un tap valide et un longPress invalide, seul longPress est
-ignoré).
+Le check `null` des kinds non-supportés est fait dans `validateAction`
+(§5.1) au registration, **pas au tap**. Un binding avec `tapAction.kind:
+'toggle'` valide + `longPressAction.kind: 'popup'` invalide → `validTap:
+true`, `validLongPress: false`, une seule erreur loguée au mount.
 
-### 5.3 `handleToggle` avec whitelist
+### 5.3 `handleToggle`
+
+La whitelist `TOGGLE_DOMAINS` est consultée au registration (§5.1
+`validateAction`) — les bindings invalides ne fire jamais leur handler. Le
+handler lui-même assume binding valide et n'a qu'à gérer les erreurs réseau.
 
 ```ts
 const TOGGLE_DOMAINS = new Set([
@@ -424,14 +522,6 @@ const TOGGLE_DOMAINS = new Set([
 ])
 
 async function handleToggle(binding, action) {
-  if (!TOGGLE_DOMAINS.has(binding.domain)) {
-    console.error(
-      `HAInteractionSystem: toggle not supported for domain '${binding.domain}' ` +
-      `on ${binding.entityId}. Use call_service with '${binding.domain}.turn_on' ` +
-      `or '${binding.domain}.media_play_pause' instead.`
-    )
-    return
-  }
   try {
     await callService({
       domain: 'homeassistant',
@@ -445,9 +535,6 @@ async function handleToggle(binding, action) {
   }
 }
 ```
-
-Validation au registration, pas au runtime : permet de fail-fast visible dans
-la console.
 
 ### 5.4 `handleCallService`
 
@@ -522,12 +609,14 @@ emitter.on('item:pointerdown', (e) => {
   const x = e.nativeEvent.nativeEvent.clientX
   const y = e.nativeEvent.nativeEvent.clientY
   const nodeId = e.node.id
-  const mapping = getHAMapping(e.node)
-  if (!mapping) return
+  const records = actionRegistry.get(nodeId)
+  if (!records) return
 
   const timer = setTimeout(() => {
-    for (const b of mapping.bindings) {
-      if (b.longPressAction) fireAction(nodeId, b, 'longPress', b.longPressAction)
+    for (const rec of records) {
+      if (rec.validLongPress && rec.binding.longPressAction) {
+        fireAction(nodeId, rec.binding, 'longPress', rec.binding.longPressAction)
+      }
     }
     pressState.delete(pid)
   }, LONG_PRESS_MS)
@@ -568,10 +657,12 @@ emitter.on('item:leave', (e) => {
 
 emitter.on('item:click', (e) => {
   // Tap = click, Pascal garantit que click fire seulement si pas pan/long-press
-  const mapping = getHAMapping(e.node)
-  if (!mapping) return
-  for (const b of mapping.bindings) {
-    if (b.tapAction) fireAction(e.node.id, b, 'tap', b.tapAction)
+  const records = actionRegistry.get(e.node.id)
+  if (!records) return
+  for (const rec of records) {
+    if (rec.validTap && rec.binding.tapAction) {
+      fireAction(e.node.id, rec.binding, 'tap', rec.binding.tapAction)
+    }
   }
 })
 ```
