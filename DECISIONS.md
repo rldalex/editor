@@ -85,6 +85,24 @@ Consequence :
   `"@maison-3d/ha-bridge": "*"` (privilegier `--theirs` puis re-ajouter cette
   ligne, ou faire un merge manuel)
 
+## D-008 : Pas de Zod dans apps/editor/ha/
+Date : 2026-04-17
+
+Le schema HA (`apps/editor/ha/schema.ts`) utilise des types TypeScript purs
+(discriminated unions natifs) plutot que des schemas Zod.
+
+Rationale :
+- `apps/editor/package.json` n'a pas `zod` en dependance. L'ajouter = 2e
+  modification d'un fichier Pascal existant (apres D-007).
+- Les writes passent par `setHAMapping` qui enforce la shape au niveau type.
+- Les reads lisent `node.metadata.ha` qu'on controle nous-memes -> validation
+  runtime pas critique a ce stade.
+
+Consequence :
+- Si un jour on importe une scene depuis une source non-controlee, ajouter
+  un parser (Zod ou custom) au boundary avant d'ecrire dans le store.
+- Garder cette regle tant que la scene est produite uniquement par notre app.
+
 ## D-006 : Ecrasement du CLAUDE.md de Pascal
 Date : 2026-04-17
 

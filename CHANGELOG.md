@@ -4,6 +4,12 @@
 
 ### 2026-04-17 — feat
 
+- PHASE 3 : schema TS + helpers pour le mapping HA stocké dans `node.metadata.ha`
+  (`apps/editor/ha/schema.ts`, `apps/editor/ha/mapping-helpers.ts`). Types :
+  `HAVisualMapping` (emissive/cover/label/color), `HAAction`
+  (toggle/call_service/popup/navigate/none), `HAEntityBinding`, `HAMapping`.
+  Helpers : `getHAMapping`, `setHAMapping`, `removeHAMapping`, `hasHAMapping`.
+  Pas de Zod pour éviter une 2e modif de `apps/editor/package.json` (D-008).
 - Bootstrap PHASE 0 : fork du repo Pascal Editor, remotes origin (rldalex) +
   upstream (pascalorg), fichiers meta (BRIEF/CLAUDE/DECISIONS/CHANGELOG),
   audit confirmé que `BaseNode.metadata` est bien le slot pour `metadata.ha`.
