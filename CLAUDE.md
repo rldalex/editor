@@ -3,13 +3,21 @@
 Fork perso de github.com/pascalorg/editor pour construire ma maison en 3D et la
 connecter a Home Assistant.
 
-## Statut actuel (2026-04-17)
+## Statut actuel (2026-04-18)
 
-- PHASE 0 (bootstrap) : DONE, sur main (commit 0e887e0, pushé)
-- PHASE 1 (ha-bridge package + POC) : DONE, sur branche feat/ha-bridge
-  (commits da60207, 0d6e2a3) — pas encore mergée dans main
-- POC validé : /ha-test charge 2107 entités HA + toggles fonctionnels
-- Prochaine étape suggérée par BRIEF : PHASE 3-4-5 (mapping HA dans l'éditeur 3D)
+- PHASE 0 / 1 / 3 / 4 : DONE, mergées sur main (PR #1 + PR #2)
+  - `@maison-3d/ha-bridge` (WebSocket HA, hooks, store, services)
+  - `apps/editor/ha/` : schema + helpers + suggest + HAMappingPanel + HABootstrap + EditorWithHA
+  - Panel HA injecté DANS l'ItemPanel Pascal via `createPortal` (sélecteur DOM + MutationObserver)
+- PHASE 9 (partielle) : import JSON ajouté, `feat/scene-io` pushée — **en attente de test
+  par le frère puis merge via PR #3**. Pascal ship déjà l'export, il manquait l'import.
+- POC `/ha-test` validé live : 2107 entités HA + toggles OK
+- Collaborateur : `ttotttur` (frère) ajouté avec write access
+- MCP `agentation` enregistré localement pour feedback visuel direct depuis l'app
+- Prochaines étapes :
+  - Soit PHASE 5 (`HAVisualSystem` — émissive temps réel sur les meshes mappés)
+  - Soit PHASE 6 (interactions tap → toggle HA)
+  - PHASE 2 (catalogue GLB custom) reste reportée (priorité 4 du BRIEF)
 
 ## Commandes essentielles (heritees de Pascal)
 
