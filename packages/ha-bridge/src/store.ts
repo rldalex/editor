@@ -1,4 +1,5 @@
 import { createStore, useStore } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
 import type { HAArea, HADevice, HAEntity, HAState, HAStatus } from './types'
 
 export interface HABridgeState {
@@ -30,28 +31,30 @@ const initialState: HABridgeState = {
   devices: {},
 }
 
-export const haStore = createStore<HABridgeState & HABridgeActions>((set) => ({
-  ...initialState,
-  setStatus: (status, error = null) => set({ status, error }),
-  setStates: (states) => set({ states }),
-  patchState: (entityId, state) =>
-    set((s) => ({ states: { ...s.states, [entityId]: state } })),
-  removeState: (entityId) =>
-    set((s) => {
-      const next = { ...s.states }
-      delete next[entityId]
-      return { states: next }
-    }),
-  setEntities: (entities) =>
-    set({
-      entities: Object.fromEntries(entities.map((e) => [e.entity_id, e])),
-    }),
-  setAreas: (areas) =>
-    set({ areas: Object.fromEntries(areas.map((a) => [a.area_id, a])) }),
-  setDevices: (devices) =>
-    set({ devices: Object.fromEntries(devices.map((d) => [d.id, d])) }),
-  reset: () => set(initialState),
-}))
+export const haStore = createStore<HABridgeState & HABridgeActions>()(
+  subscribeWithSelector((set) => ({
+    ...initialState,
+    setStatus: (status, error = null) => set({ status, error }),
+    setStates: (states) => set({ states }),
+    patchState: (entityId, state) =>
+      set((s) => ({ states: { ...s.states, [entityId]: state } })),
+    removeState: (entityId) =>
+      set((s) => {
+        const next = { ...s.states }
+        delete next[entityId]
+        return { states: next }
+      }),
+    setEntities: (entities) =>
+      set({
+        entities: Object.fromEntries(entities.map((e) => [e.entity_id, e])),
+      }),
+    setAreas: (areas) =>
+      set({ areas: Object.fromEntries(areas.map((a) => [a.area_id, a])) }),
+    setDevices: (devices) =>
+      set({ devices: Object.fromEntries(devices.map((d) => [d.id, d])) }),
+    reset: () => set(initialState),
+  }))
+)
 
 export const useHAStore = <T,>(
   selector: (s: HABridgeState & HABridgeActions) => T,
