@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### 2026-04-18 — feat
+
+- PHASE 9 (partielle) : import JSON de scène. Pascal ship déjà
+  `Export Scene (JSON)` dans la command palette (Ctrl/Cmd+K), il manquait
+  le counterpart import.
+  - `apps/editor/scene-io/import.ts` : `importSceneFromFile(file)` parse +
+    `applySceneGraphToEditor`. `openImportDialog()` = file picker + confirm
+    avant overwrite + alert sur erreur.
+  - `apps/editor/scene-io/SceneIORegistration.tsx` : enregistre la commande
+    `Import Scene (JSON)` dans la palette Pascal via `useCommandRegistry`.
+  - Intégré dans `EditorWithHA.tsx`.
+  - Les mappings HA (`node.metadata.ha`) roundtrip gratuitement puisque
+    l'export Pascal sérialise `metadata`.
+
 ### 2026-04-17 — feat
 
 - PHASE 4 : UI HA Mapping dans l'éditeur, intégrée au panel Pascal via portal.
