@@ -85,6 +85,46 @@ Consequence :
   `"@maison-3d/ha-bridge": "*"` (privilegier `--theirs` puis re-ajouter cette
   ligne, ou faire un merge manuel)
 
+## D-009 : Swap Editor -> EditorWithHA dans apps/editor/app/page.tsx
+Date : 2026-04-17
+
+`apps/editor/app/page.tsx` (fichier Pascal) est modifié pour remplacer
+l'import de `Editor` par `EditorWithHA` (notre wrapper dans
+`apps/editor/ha/EditorWithHA.tsx`).
+
+Rationale :
+- Sans ce swap, `HABootstrap` et `HAMappingPanel` restent du code mort — la
+  connexion HA et l'overlay UI ne se montent jamais.
+- `EditorWithHA` proxy les props 1-pour-1 et ajoute uniquement `HABootstrap`
+  + `HAMappingPanel` comme siblings. Aucune modif du composant `Editor`
+  Pascal ni des panels (`packages/editor/src/components/ui/panels/`).
+- Alternative rejetée : dupliquer `page.tsx` dans un dossier custom — plus
+  de surface de conflit en cas d'evolution de la page upstream.
+
+Consequence :
+- En cas de merge upstream qui touche `page.tsx`, garder notre import
+  `EditorWithHA` et merger manuellement le reste (sidebarTabs, toolbars).
+- Toute extension UI globale (bandeau HA, notifications) passe par
+  `EditorWithHA` — pas par `page.tsx`.
+
+## D-008 : Pas de Zod dans apps/editor/ha/
+Date : 2026-04-17
+
+Le schema HA (`apps/editor/ha/schema.ts`) utilise des types TypeScript purs
+(discriminated unions natifs) plutot que des schemas Zod.
+
+Rationale :
+- `apps/editor/package.json` n'a pas `zod` en dependance. L'ajouter = 2e
+  modification d'un fichier Pascal existant (apres D-007).
+- Les writes passent par `setHAMapping` qui enforce la shape au niveau type.
+- Les reads lisent `node.metadata.ha` qu'on controle nous-memes -> validation
+  runtime pas critique a ce stade.
+
+Consequence :
+- Si un jour on importe une scene depuis une source non-controlee, ajouter
+  un parser (Zod ou custom) au boundary avant d'ecrire dans le store.
+- Garder cette regle tant que la scene est produite uniquement par notre app.
+
 ## D-006 : Ecrasement du CLAUDE.md de Pascal
 Date : 2026-04-17
 
