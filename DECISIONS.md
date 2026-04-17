@@ -85,6 +85,28 @@ Consequence :
   `"@maison-3d/ha-bridge": "*"` (privilegier `--theirs` puis re-ajouter cette
   ligne, ou faire un merge manuel)
 
+## D-009 : Swap Editor -> EditorWithHA dans apps/editor/app/page.tsx
+Date : 2026-04-17
+
+`apps/editor/app/page.tsx` (fichier Pascal) est modifié pour remplacer
+l'import de `Editor` par `EditorWithHA` (notre wrapper dans
+`apps/editor/ha/EditorWithHA.tsx`).
+
+Rationale :
+- Sans ce swap, `HABootstrap` et `HAMappingPanel` restent du code mort — la
+  connexion HA et l'overlay UI ne se montent jamais.
+- `EditorWithHA` proxy les props 1-pour-1 et ajoute uniquement `HABootstrap`
+  + `HAMappingPanel` comme siblings. Aucune modif du composant `Editor`
+  Pascal ni des panels (`packages/editor/src/components/ui/panels/`).
+- Alternative rejetée : dupliquer `page.tsx` dans un dossier custom — plus
+  de surface de conflit en cas d'evolution de la page upstream.
+
+Consequence :
+- En cas de merge upstream qui touche `page.tsx`, garder notre import
+  `EditorWithHA` et merger manuellement le reste (sidebarTabs, toolbars).
+- Toute extension UI globale (bandeau HA, notifications) passe par
+  `EditorWithHA` — pas par `page.tsx`.
+
 ## D-008 : Pas de Zod dans apps/editor/ha/
 Date : 2026-04-17
 
