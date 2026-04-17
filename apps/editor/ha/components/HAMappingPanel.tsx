@@ -1,9 +1,17 @@
 'use client'
 
 import { type AnyNodeId, type ItemNode, useScene } from '@pascal-app/core'
-import { entityDomain, useHAConnection, useHAEntities, useHAState, useHAStates } from '@maison-3d/ha-bridge'
+import {
+  entityDomain,
+  useHAConnection,
+  useHAEntities,
+  useHAState,
+  useHAStates,
+} from '@maison-3d/ha-bridge'
 import { useViewer } from '@pascal-app/viewer'
+import clsx from 'clsx'
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { getHAMapping, removeHAMapping, setHAMapping } from '../mapping-helpers'
 import type { HAAction, HAEntityBinding, HAMapping, HAVisualMapping } from '../schema'
 import { type EntitySuggestion, suggestEntities } from '../suggest'
@@ -27,36 +35,64 @@ const ACTION_KINDS: ReadonlyArray<{ kind: ActionKind; label: string; disabled?: 
   { kind: 'navigate', label: 'Navigate', disabled: true },
 ]
 
-function HAStatusChip() {
-  const { status } = useHAConnection()
+// --- Subcomponents (Pascal design language) ---
+
+function StatusDot({ status }: { status: 'connected' | 'connecting' | 'disconnected' | 'error' }) {
   const color =
     status === 'connected'
-      ? 'bg-green-500'
+      ? 'bg-emerald-500'
       : status === 'connecting'
-        ? 'bg-yellow-500'
+        ? 'bg-amber-500'
         : status === 'error'
           ? 'bg-red-500'
-          : 'bg-gray-400'
+          : 'bg-muted-foreground/40'
+  return <span className={clsx('inline-block h-2 w-2 rounded-full', color)} />
+}
+
+function Pill({ children, tone = 'muted' }: { children: React.ReactNode; tone?: 'muted' | 'info' }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-600">
-      <span className={`inline-block h-2 w-2 rounded-full ${color}`} />
-      HA {status}
+    <span
+      className={clsx(
+        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px]',
+        tone === 'info'
+          ? 'bg-accent/60 text-foreground'
+          : 'bg-[#2C2C2E] text-muted-foreground',
+      )}
+    >
+      {children}
     </span>
+  )
+}
+
+/**
+ * Matches Pascal's PanelSection look (title bar + body) without pulling in
+ * motion/react. No collapse animation — HA section stays open to be findable.
+ */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex shrink-0 flex-col border-border/50 border-b">
+      <div className="flex h-10 shrink-0 items-center justify-between bg-accent/50 px-3">
+        <span className="truncate font-medium text-foreground text-sm">{title}</span>
+      </div>
+      <div className="flex flex-col gap-1.5 p-3 pt-2">{children}</div>
+    </div>
   )
 }
 
 function LiveStatePreview({ entityId }: { entityId: string }) {
   const state = useHAState(entityId)
   if (!state) {
-    return <div className="text-xs text-gray-500">Pas d'état live pour {entityId}</div>
+    return (
+      <div className="rounded-md border border-border/50 bg-[#2C2C2E] px-2 py-1.5 text-muted-foreground text-xs">
+        Pas d'état live pour <span className="font-mono">{entityId}</span>
+      </div>
+    )
   }
   const friendly = (state.attributes?.friendly_name as string | undefined) ?? entityId
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 p-2 text-xs">
-      <div className="font-medium text-gray-800">{friendly}</div>
-      <div className="text-gray-600">
-        état : <span className="font-mono">{state.state}</span>
-      </div>
+    <div className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-[#2C2C2E] px-2 py-1.5">
+      <span className="truncate font-medium text-foreground text-xs">{friendly}</span>
+      <Pill tone="info">{state.state}</Pill>
     </div>
   )
 }
@@ -82,7 +118,8 @@ function EntityPicker({
     const lower = q.toLowerCase()
     return entities
       .filter((e) => {
-        const name = (states[e.entity_id]?.attributes?.friendly_name as string | undefined) ?? e.name ?? ''
+        const name =
+          (states[e.entity_id]?.attributes?.friendly_name as string | undefined) ?? e.name ?? ''
         return e.entity_id.toLowerCase().includes(lower) || name.toLowerCase().includes(lower)
       })
       .slice(0, 20)
@@ -95,43 +132,48 @@ function EntityPicker({
   }, [entities, states, query, meshName])
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-1.5">
       <input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Chercher une entité…"
-        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
+        className="h-8 w-full rounded-md border border-border/50 bg-[#2C2C2E] px-2 text-foreground text-xs outline-none placeholder:text-muted-foreground focus:border-primary/40"
       />
       {value && (
-        <div className="text-[11px] text-gray-600">
-          Sélectionnée : <span className="font-mono">{value}</span>
+        <div className="text-[11px] text-muted-foreground">
+          Sélectionnée : <span className="font-mono text-foreground">{value}</span>
         </div>
       )}
-      <ul className="max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white">
+      <ul className="no-scrollbar max-h-48 overflow-y-auto rounded-md border border-border/50 bg-[#2C2C2E]">
         {suggestions.length === 0 && (
-          <li className="px-2 py-1.5 text-xs text-gray-500">Aucun résultat</li>
+          <li className="px-2 py-1.5 text-muted-foreground text-xs">Aucun résultat</li>
         )}
-        {suggestions.map(({ entity, state, score, domain }) => {
+        {suggestions.map(({ entity, state, score }) => {
           const friendly =
-            (state?.attributes?.friendly_name as string | undefined) ?? entity.name ?? entity.entity_id
+            (state?.attributes?.friendly_name as string | undefined) ??
+            entity.name ??
+            entity.entity_id
           const isSelected = entity.entity_id === value
           return (
             <li key={entity.entity_id}>
               <button
                 type="button"
-                onClick={() => onChange(entity.entity_id, domain)}
-                className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-gray-100 ${
-                  isSelected ? 'bg-blue-50' : ''
-                }`}
-              >
-                <span className="flex flex-col">
-                  <span className="font-medium text-gray-800">{friendly}</span>
-                  <span className="font-mono text-[10px] text-gray-500">{entity.entity_id}</span>
-                </span>
-                {score > 0 && (
-                  <span className="text-[10px] text-gray-400">{Math.round(score * 100)}%</span>
+                onClick={() => onChange(entity.entity_id, entityDomain(entity.entity_id))}
+                className={clsx(
+                  'flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs transition-colors',
+                  isSelected
+                    ? 'bg-primary/15 text-foreground'
+                    : 'text-muted-foreground hover:bg-[#3e3e3e] hover:text-foreground',
                 )}
+              >
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate font-medium">{friendly}</span>
+                  <span className="truncate font-mono text-[10px] opacity-70">
+                    {entity.entity_id}
+                  </span>
+                </span>
+                {score > 0 && <Pill>{Math.round(score * 100)}%</Pill>}
               </button>
             </li>
           )
@@ -141,9 +183,40 @@ function EntityPicker({
   )
 }
 
-function HAMappingEditor({ node }: { node: ItemNode }) {
+function Select<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T
+  options: ReadonlyArray<{ kind: T; label: string; disabled?: boolean }>
+  onChange: (v: T) => void
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as T)}
+      className="h-8 w-full rounded-md border border-border/50 bg-[#2C2C2E] px-2 text-foreground text-xs outline-none focus:border-primary/40"
+    >
+      {options.map((o) => (
+        <option key={o.kind} value={o.kind} disabled={o.disabled}>
+          {o.label}
+          {o.disabled ? ' — bientôt' : ''}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/**
+ * The part that gets portaled into Pascal's ItemPanel body. Pascal's PanelSection
+ * components live side-by-side in the scrollable content; our sections mimic
+ * that exact structure so the visual flow is continuous.
+ */
+function HAMappingSections({ node }: { node: ItemNode }) {
   const existing = useMemo<HAMapping | undefined>(() => getHAMapping(node), [node])
   const existingBinding: HAEntityBinding | undefined = existing?.bindings[0]
+  const { status } = useHAConnection()
 
   const meshName = node.name ?? node.asset?.name ?? ''
 
@@ -152,7 +225,6 @@ function HAMappingEditor({ node }: { node: ItemNode }) {
   const [visualKind, setVisualKind] = useState<VisualKind>(existingBinding?.visual?.kind ?? 'none')
   const [tapKind, setTapKind] = useState<ActionKind>(existingBinding?.tapAction?.kind ?? 'none')
 
-  // Reset local state when selection changes to a different node
   useEffect(() => {
     const b = getHAMapping(node)?.bindings[0]
     setEntityId(b?.entityId ?? '')
@@ -166,13 +238,9 @@ function HAMappingEditor({ node }: { node: ItemNode }) {
   const onSave = () => {
     if (!canSave) return
     const visual: HAVisualMapping | undefined =
-      visualKind === 'emissive'
-        ? { kind: 'emissive' }
-        : visualKind === 'none'
-          ? undefined
-          : undefined
+      visualKind === 'emissive' ? { kind: 'emissive' } : undefined
     const tapAction: HAAction | undefined =
-      tapKind === 'none' ? undefined : tapKind === 'toggle' ? { kind: 'toggle' } : undefined
+      tapKind === 'toggle' ? { kind: 'toggle' } : undefined
 
     const binding: HAEntityBinding = {
       entityId,
@@ -192,11 +260,19 @@ function HAMappingEditor({ node }: { node: ItemNode }) {
   }
 
   return (
-    <div className="space-y-3">
-      <section className="space-y-1.5">
-        <label className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-          Entité HA
-        </label>
+    <>
+      {/* Divider header marking the start of our HA block */}
+      <div className="flex h-10 shrink-0 items-center justify-between border-border/50 border-t border-b bg-accent/70 px-3">
+        <span className="truncate font-semibold text-foreground text-sm tracking-tight">
+          Home Assistant
+        </span>
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <StatusDot status={status} />
+          {status}
+        </span>
+      </div>
+
+      <Section title="Entité HA">
         <EntityPicker
           meshName={meshName}
           value={entityId}
@@ -206,50 +282,22 @@ function HAMappingEditor({ node }: { node: ItemNode }) {
           }}
         />
         {entityId && <LiveStatePreview entityId={entityId} />}
-      </section>
+      </Section>
 
-      <section className="space-y-1.5">
-        <label className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-          Visuel
-        </label>
-        <select
-          value={visualKind}
-          onChange={(e) => setVisualKind(e.target.value as VisualKind)}
-          className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
-        >
-          {VISUAL_KINDS.map((v) => (
-            <option key={v.kind} value={v.kind} disabled={v.disabled}>
-              {v.label}
-              {v.disabled ? ' — bientôt' : ''}
-            </option>
-          ))}
-        </select>
-      </section>
+      <Section title="Visuel">
+        <Select value={visualKind} options={VISUAL_KINDS} onChange={setVisualKind} />
+      </Section>
 
-      <section className="space-y-1.5">
-        <label className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-          Action au tap
-        </label>
-        <select
-          value={tapKind}
-          onChange={(e) => setTapKind(e.target.value as ActionKind)}
-          className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
-        >
-          {ACTION_KINDS.map((a) => (
-            <option key={a.kind} value={a.kind} disabled={a.disabled}>
-              {a.label}
-              {a.disabled ? ' — bientôt' : ''}
-            </option>
-          ))}
-        </select>
-      </section>
+      <Section title="Action au tap">
+        <Select value={tapKind} options={ACTION_KINDS} onChange={setTapKind} />
+      </Section>
 
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex items-center justify-between gap-2 bg-accent/30 px-3 py-2">
         <button
           type="button"
           onClick={onRemove}
           disabled={!existing}
-          className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-[#2C2C2E] px-2 py-1 text-muted-foreground text-xs transition-colors hover:bg-[#3e3e3e] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
         >
           Supprimer
         </button>
@@ -257,41 +305,78 @@ function HAMappingEditor({ node }: { node: ItemNode }) {
           type="button"
           onClick={onSave}
           disabled={!canSave}
-          className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-primary px-3 py-1 font-medium text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Enregistrer
         </button>
       </div>
-    </div>
+    </>
   )
 }
 
 /**
- * Overlay panel displayed when exactly one ItemNode is selected. Sits in its
- * own corner — does NOT touch Pascal's PanelManager (packages/editor read-only).
+ * Selector for Pascal's PanelWrapper content area. The PanelWrapper outer div
+ * uses `fixed top-20 right-4 z-50` + `rounded-xl bg-sidebar/95` (see
+ * packages/editor/src/components/ui/panels/panel-wrapper.tsx). Its content
+ * body is the inner direct-child div with the `no-scrollbar` marker class.
+ *
+ * If upstream changes the PanelWrapper classes, this selector needs updating —
+ * we'll degrade gracefully (panel won't render anywhere).
+ */
+function findItemPanelBody(): HTMLElement | null {
+  const wrappers = document.querySelectorAll<HTMLElement>(
+    '.pointer-events-auto.fixed.top-20.right-4',
+  )
+  for (const wrapper of Array.from(wrappers)) {
+    // Body is the direct child with the `no-scrollbar` class.
+    const body = wrapper.querySelector<HTMLElement>(':scope > .no-scrollbar')
+    if (body) return body
+  }
+  return null
+}
+
+/**
+ * Tracks Pascal's ItemPanel mount/unmount via MutationObserver so we can portal
+ * our sections into its scrollable body. Re-renders our content whenever the
+ * anchor changes.
+ */
+function useItemPanelAnchor(enabled: boolean): HTMLElement | null {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (!enabled) {
+      setAnchor(null)
+      return
+    }
+    const update = () => {
+      const next = findItemPanelBody()
+      setAnchor((curr) => (curr === next ? curr : next))
+    }
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [enabled])
+
+  return anchor
+}
+
+/**
+ * Injects an "Home Assistant" block at the bottom of Pascal's ItemPanel via
+ * portal. Does not render a standalone floating panel — lives inside Pascal's
+ * PanelWrapper body.
  */
 export function HAMappingPanel() {
   const selectedIds = useViewer((s) => s.selection.selectedIds)
   const nodes = useScene((s) => s.nodes)
 
-  if (selectedIds.length !== 1) return null
-  const firstId = selectedIds[0]
-  if (!firstId) return null
-  const node = nodes[firstId as AnyNodeId]
-  if (!node || node.type !== 'item') return null
+  const singleItemId =
+    selectedIds.length === 1 ? (selectedIds[0] as AnyNodeId | undefined) : undefined
+  const node = singleItemId ? nodes[singleItemId] : undefined
+  const isItem = !!node && node.type === 'item'
 
-  return (
-    <div className="pointer-events-auto fixed bottom-4 left-4 z-40 w-80 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
-      <header className="mb-2 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900">Mapping Home Assistant</h3>
-          <p className="text-[11px] text-gray-500">
-            {node.name ?? node.asset?.name ?? node.id}
-          </p>
-        </div>
-        <HAStatusChip />
-      </header>
-      <HAMappingEditor node={node} />
-    </div>
-  )
+  const anchor = useItemPanelAnchor(isItem)
+
+  if (!isItem || !anchor) return null
+  return createPortal(<HAMappingSections node={node as ItemNode} />, anchor)
 }

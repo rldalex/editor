@@ -4,14 +4,16 @@
 
 ### 2026-04-17 — feat
 
-- PHASE 4 : UI HA Mapping dans l'éditeur.
+- PHASE 4 : UI HA Mapping dans l'éditeur, intégrée au panel Pascal via portal.
   - `apps/editor/ha/suggest.ts` : `suggestDomain` (préfixes Blender), `scoreMatch`
     (domain bonus + token overlap normalisé), `suggestEntities` (tri top-N).
-  - `apps/editor/ha/components/HAMappingPanel.tsx` : overlay bottom-left actif
-    quand exactement 1 ItemNode sélectionné. Entity picker (autocomplete +
-    suggestions), preview état live, selectors visuel + action tap,
-    boutons Enregistrer / Supprimer. v1 = emissive + toggle; cover/label/color
-    et call_service/popup/navigate affichés mais désactivés ("bientôt").
+  - `apps/editor/ha/components/HAMappingPanel.tsx` : sections HA (Entité,
+    Visuel, Action) rendues via `createPortal` DANS le body du `PanelWrapper`
+    Pascal, à la suite des sections built-in (Position/Rotation/Scale/…).
+    `MutationObserver` suit mount/unmount du panel Pascal. Design aligné
+    sur les tokens Pascal (`bg-sidebar/95`, `border-border/50`, `text-foreground`).
+    v1 = emissive + toggle ; cover/label/color et call_service/popup/navigate
+    affichés mais désactivés ("bientôt").
   - `apps/editor/ha/EditorWithHA.tsx` : wrapper qui injecte `HABootstrap` +
     `HAMappingPanel` en siblings du `<Editor />` Pascal.
   - `apps/editor/app/page.tsx` : 1-liner swap `Editor` → `EditorWithHA`
