@@ -52,6 +52,10 @@ export function applyEmissiveState(
   const color = isOn ? parsed.onColor : parsed.offColor
   const intensity = isOn ? parsed.intensityOn : parsed.intensityOff
 
+  console.log(
+    `[HAVisualSystem] apply ${binding.entityId} state=${haState} → intensity=${intensity} color=#${color.getHex().toString(16).padStart(6, '0')} on ${targets.length} mesh(es): ${targets.map((m) => m.name || '(unnamed)').join(', ')} matTypes=[${targets.map((m) => (Array.isArray(m.material) ? 'array' : (m.material as any)?.type ?? '?')).join(', ')}]`,
+  )
+
   for (const mesh of targets) {
     const mat = mesh.material
     if (Array.isArray(mat)) {
@@ -78,4 +82,11 @@ function applyToOne(
   if ('emissiveIntensity' in mat) {
     mat.emissiveIntensity = intensity
   }
+  // MeshStandardNodeMaterial (WebGPU/TSL) compiles its shader from a node
+  // graph. Mutating `emissive` / `emissiveIntensity` uniforms doesn't always
+  // invalidate the compiled node pipeline, so the uniform update can be
+  // ignored by the GPU-side shader. Setting `needsUpdate = true` forces
+  // three.js to rebuild the pipeline on the next frame, picking up the new
+  // values.
+  mat.needsUpdate = true
 }
