@@ -1,0 +1,35 @@
+{
+  "name": "@maison-3d/scene-bundle",
+  "version": "0.1.0",
+  "description": "Lecture/écriture de bundles .maison3d.zip (scène + mappings HA + GLBs)",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "tsc --build --watch",
+    "check-types": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "peerDependencies": {
+    "@pascal-app/core": "workspace:*",
+    "@maison-3d/ha-systems": "workspace:*"
+  },
+  "dependencies": {
+    "fflate": "^0.8",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@pascal/typescript-config": "*",
+    "typescript": "5.9.3"
+  }
+}
