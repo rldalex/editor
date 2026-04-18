@@ -214,10 +214,6 @@
         "@pascal/typescript-config": "*",
         "typescript": "5.9.3",
       },
-      "peerDependencies": {
-        "@maison-3d/ha-systems": "workspace:*",
-        "@pascal-app/core": "workspace:*",
-      },
     },
     "packages/typescript-config": {
       "name": "@repo/typescript-config",
