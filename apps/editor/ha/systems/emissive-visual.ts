@@ -1,26 +1,9 @@
 // apps/editor/ha/systems/emissive-visual.ts
 import { Color } from 'three'
 import type { Mesh } from 'three'
-import { uniform } from 'three/tsl'
 import type { HAEmissiveVisual, HAEntityBinding } from '../schema'
 
-/**
- * Uniform nodes are TSL (Three.js Shading Language) wrappers that bind
- * directly into a NodeMaterial's compiled shader. Mutating their `.value`
- * is picked up automatically by WebGPU's uniform buffer on the next frame
- * — no needsUpdate, no recompile. This is the correct way to drive runtime
- * values into a NodeMaterial.
- *
- * TSL uniform nodes are typed as `ShaderNodeObject<UniformNode<T>>` in
- * three/tsl but that type isn't re-exported at a stable path. Typing as
- * `any` for the node handle is acceptable — we only touch `.value` and
- * `.mul()` on it, both verified at runtime.
- */
-type UniformNodeLike = { value: any; mul: (other: any) => any }
-
 export type ParsedEmissive = {
-  colorUniform: UniformNodeLike
-  intensityUniform: UniformNodeLike
   onColor: Color
   offColor: Color
   intensityOn: number
@@ -28,39 +11,35 @@ export type ParsedEmissive = {
 }
 
 export function parseEmissive(visual: HAEmissiveVisual): ParsedEmissive {
-  const onColor = new Color(visual.onColor ?? '#ffaa00')
-  const offColor = new Color(visual.offColor ?? '#000000')
-  const intensityOn = visual.intensityOn ?? 1.5
-  const intensityOff = visual.intensityOff ?? 0
   return {
-    // Seed uniforms at the off-state so the first apply (fireImmediately)
-    // can match either on/off without an awkward initial black flash.
-    colorUniform: uniform(offColor.clone()),
-    intensityUniform: uniform(intensityOff),
-    onColor,
-    offColor,
-    intensityOn,
-    intensityOff,
+    onColor: new Color(visual.onColor ?? '#ffaa00'),
+    offColor: new Color(visual.offColor ?? '#000000'),
+    intensityOn: visual.intensityOn ?? 1.5,
+    intensityOff: visual.intensityOff ?? 0,
   }
 }
 
 // Warn each entity at most once per "off-like" state to avoid log spam
 const warnedUnavailable = new Set<string>()
 
-// Tracks which materials already have their emissiveNode wired to our
-// uniforms. Avoids recompiling the shader on every apply — we only pay the
-// recompile cost once per mesh, on the first apply.
-const ATTACHED_FLAG = Symbol('haEmissiveAttached')
+// Seed value used to ensure MeshStandardNodeMaterial compiles its emissive
+// branch on the first render. We apply a near-zero seed at attach time so
+// the shader includes the emissive uniforms — subsequent mutations of
+// `emissive.copy()` + `emissiveIntensity` then hit a pipeline that actually
+// reads them.
+const SEED_INTENSITY = 0.0001
+const ATTACHED_FLAG = Symbol('haEmissiveSeeded')
 
 /**
  * Maps an HA state string to the visual pair (color, intensity) and applies
  * it to all target meshes. Treats unavailable/unknown/undefined as off (v1
  * kiosk policy, see spec §4.5).
  *
- * The first apply per mesh attaches an emissiveNode = colorUniform *
- * intensityUniform to the material (one-time shader recompile). All
- * subsequent applies just mutate `.value` on the uniforms — zero recompile,
- * WebGPU picks up the change on the next frame automatically.
+ * First apply per mesh "seeds" the material with a non-zero emissive so the
+ * MeshStandardNodeMaterial (WebGPU/TSL) compiles its shader WITH the
+ * emissive branch. Without this seed, if initial emissive is black the TSL
+ * code generator omits the emissive pipeline entirely and later uniform
+ * mutations have no effect.
  */
 export function applyEmissiveState(
   binding: HAEntityBinding,
@@ -93,43 +72,43 @@ export function applyEmissiveState(
   for (const mesh of targets) {
     const mat = mesh.material
     if (Array.isArray(mat)) {
-      for (const m of mat) attachEmissiveNode(m, parsed, mesh.name)
+      for (const m of mat) applyToOne(m, color, intensity, mesh.name)
     } else {
-      attachEmissiveNode(mat, parsed, mesh.name)
+      applyToOne(mat, color, intensity, mesh.name)
     }
   }
-
-  // Mutate the shared uniforms. WebGPU picks this up on the next frame
-  // without needsUpdate — this is the whole point of going through TSL.
-  parsed.colorUniform.value.copy(color)
-  parsed.intensityUniform.value = intensity
 }
 
-function attachEmissiveNode(
+function applyToOne(
   mat: any,
-  parsed: ParsedEmissive,
+  color: Color,
+  intensity: number,
   meshName: string,
 ): void {
   if (!mat) return
-  if (mat[ATTACHED_FLAG]) return
-
-  // MeshStandardNodeMaterial and related expose `emissiveNode`. Plain
-  // MeshBasicMaterial does not — guard and warn.
-  if (!('emissiveNode' in mat)) {
+  if (!('emissive' in mat)) {
     console.warn(
-      `HAVisualSystem: mesh "${meshName}" material ${mat.type ?? '?'} has no emissiveNode, skipping`,
+      `HAVisualSystem: mesh "${meshName}" material ${mat.type ?? '?'} has no emissive, skipping`,
     )
-    mat[ATTACHED_FLAG] = true // don't retry next tick
     return
   }
 
-  // Build the emissive node graph: colorUniform * intensityUniform.
-  // The multiplication returns a new node whose value is recomputed per
-  // frame from the current uniform values.
-  mat.emissiveNode = parsed.colorUniform.mul(parsed.intensityUniform)
-  mat.needsUpdate = true // one-time recompile to integrate the new node
-  mat[ATTACHED_FLAG] = true
-  console.log(
-    `[HAVisualSystem] attached emissiveNode to mesh "${meshName || '(unnamed)'}"`,
-  )
+  // First apply per material: seed with a non-zero emissive BEFORE the
+  // shader compiles so the emissive pipeline is included. We set emissive
+  // to the target color immediately (not a synthetic seed) and flag the
+  // material — this avoids any visible "flash" frame.
+  if (!mat[ATTACHED_FLAG]) {
+    mat.emissive.copy(color)
+    mat.emissiveIntensity = Math.max(intensity, SEED_INTENSITY)
+    mat.needsUpdate = true
+    mat[ATTACHED_FLAG] = true
+    console.log(
+      `[HAVisualSystem] seeded + attached emissive on mesh "${meshName || '(unnamed)'}" (first apply)`,
+    )
+    return
+  }
+
+  // Subsequent applies: hot path. The shader already reads emissive uniforms.
+  mat.emissive.copy(color)
+  mat.emissiveIntensity = intensity
 }
