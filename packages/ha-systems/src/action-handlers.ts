@@ -6,10 +6,53 @@ export const TOGGLE_DOMAINS = new Set([
   'input_boolean', 'automation', 'group',
 ])
 
+export type DispatchScope = 'editor' | 'kiosk'
+
 export type ActionHandler = (
   binding: HAEntityBinding,
   action: HAAction,
 ) => Promise<void>
+
+// Module-level dedupe: we only warn once per entityId when popup actions are
+// silently no-op'd in kiosk scope. PHASE 7 (popups) is deferred post-kiosk;
+// this prevents the kiosk from crashing if the bundle contains popup actions.
+const popupWarnedEntities = new Set<string>()
+
+export function _resetPopupWarnedEntities(): void {
+  popupWarnedEntities.clear()
+}
+
+/**
+ * Dispatches a validated action for a given binding, scoped to either the
+ * editor (default) or the kiosk. In kiosk scope, `popup` actions are silently
+ * ignored with a one-time `console.warn` per entity — popups are an editor-only
+ * UI (brightness slider, climate control) not implemented in the kiosk.
+ *
+ * Returns a promise that resolves when the underlying handler completes, or
+ * `undefined` if the action was suppressed/unknown. Errors bubble up from the
+ * individual handlers (which already log and swallow service-call failures).
+ */
+export function dispatchAction(
+  action: HAAction,
+  binding: HAEntityBinding,
+  opts: { scope?: DispatchScope } = {},
+): Promise<void> | undefined {
+  const scope: DispatchScope = opts.scope ?? 'editor'
+
+  if (scope === 'kiosk' && action.kind === 'popup') {
+    if (!popupWarnedEntities.has(binding.entityId)) {
+      popupWarnedEntities.add(binding.entityId)
+      console.warn(
+        `[HAInteractionSystem] popup action ignored in kiosk scope for ${binding.entityId}`,
+      )
+    }
+    return
+  }
+
+  const handler = HANDLERS[action.kind]
+  if (!handler) return
+  return handler(binding, action)
+}
 
 async function handleToggle(binding: HAEntityBinding): Promise<void> {
   try {

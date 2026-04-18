@@ -1,5 +1,6 @@
 'use client'
 
+import { HAInteractionSystem, HAVisualSystem } from '@maison-3d/ha-systems'
 import { Viewer } from '@pascal-app/viewer'
 import styles from './KioskViewer.module.css'
 
@@ -19,13 +20,20 @@ import styles from './KioskViewer.module.css'
  *
  * We pass `selectionManager="custom"` so the editor-oriented default
  * SelectionManager (which drives building/level/zone drill-down) is NOT mounted
- * — kiosk mode has no selection UI. HA tap/long-press handling (Task C5) will
- * be wired via its own system listening on the shared event emitter.
+ * — kiosk mode has no selection UI.
+ *
+ * HA systems are mounted as children of `<Viewer>` so they live inside the R3F
+ * tree (required: `HAVisualSystem` uses `useFrame` to drive emissive/cover
+ * visuals). `HAInteractionSystem` runs with `scope="kiosk"` so popup actions
+ * (PHASE 7, deferred) no-op with a one-time warn instead of crashing.
  */
 export function KioskViewer() {
   return (
     <div className={styles.canvas}>
-      <Viewer selectionManager="custom" />
+      <Viewer selectionManager="custom">
+        <HAVisualSystem />
+        <HAInteractionSystem scope="kiosk" />
+      </Viewer>
     </div>
   )
 }
