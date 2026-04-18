@@ -314,7 +314,7 @@ function HAMappingSections({ node }: { node: ItemNode }) {
             />
             <span className="flex-1">Faire glow le mesh quand allumé</span>
             <span className="text-[10px] text-muted-foreground">
-              {glow ? 'oui' : 'non (light seule)'}
+              {glow ? 'oui' : 'non'}
             </span>
           </label>
         )}

@@ -2,6 +2,7 @@
 
 import { type SidebarTab, ViewerToolbarLeft, ViewerToolbarRight } from '@pascal-app/editor'
 import { EditorWithHA } from '../ha/EditorWithHA'
+import { localDeleteAsset, localUploadAsset } from '../uploads/local-upload-handlers'
 
 const SIDEBAR_TABS: (SidebarTab & { component: React.ComponentType })[] = [
   {
@@ -11,6 +12,12 @@ const SIDEBAR_TABS: (SidebarTab & { component: React.ComponentType })[] = [
   },
 ]
 
+const SITE_PANEL_PROPS = {
+  projectId: 'local-editor',
+  onUploadAsset: localUploadAsset,
+  onDeleteAsset: localDeleteAsset,
+}
+
 export default function Home() {
   return (
     <div className="h-screen w-screen">
@@ -18,6 +25,7 @@ export default function Home() {
         layoutVersion="v2"
         projectId="local-editor"
         sidebarTabs={SIDEBAR_TABS}
+        sitePanelProps={SITE_PANEL_PROPS}
         viewerToolbarLeft={<ViewerToolbarLeft />}
         viewerToolbarRight={<ViewerToolbarRight />}
       />

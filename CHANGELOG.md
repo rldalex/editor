@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### 2026-04-18 — feat (local uploads + site rename + Agentation wiring)
+
+- `apps/editor/uploads/local-upload-handlers.ts` : handler local pour
+  l'upload scan/floorplan (bouton "Upload scan/floorplan" du SitePanel).
+  Crée un blob URL via `URL.createObjectURL(file)` + un `ScanNode`/
+  `GuideNode` via `useScene.createNode`. `localDeleteAsset` revoke le
+  blob URL. Câblé dans `app/page.tsx` via `sitePanelProps`.
+- `apps/editor/ui-overrides/SiteRenameInjector.tsx` : override
+  non-invasif pour renommer le nom du site. Pattern
+  `MutationObserver` + `createPortal` (comme `HAMappingPanel`) —
+  trouve le `<img alt="Site">` + son `<span>` voisin, ajoute la
+  classe `group` sur le container, porte un bouton pencil + input
+  inline. Même UX que `InlineRenameInput` Pascal (pencil sur hover,
+  Enter sauve, Escape annule). Aucun fichier Pascal modifié.
+- `apps/editor/app/layout.tsx` : prop `endpoint="http://localhost:4747"`
+  sur `<Agentation />` — sans ça, les annotations du browser
+  n'arrivaient pas dans le store MCP partagé. Les `agentation_*`
+  tool calls Claude Code voyaient sessions vides malgré le webhook
+  Auto-Send activé.
+- `apps/editor/ha/components/HAMappingPanel.tsx` : retrait du texte
+  "(light seule)" à côté de la case "non" du checkbox glow — le
+  label affiche maintenant juste "oui" / "non".
+
 ### 2026-04-18 — feat (PHASE 5.2 + UI glow toggle)
 
 - PHASE 5.2 : la lumière Pascal suit maintenant l'attribut `brightness`
