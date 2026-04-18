@@ -59,4 +59,17 @@ describe('writeBundle', () => {
     expect(haConfig.url).toBe('http://ha.local:8123')
     expect(haConfig.token).toBeUndefined()  // jamais de token dans le bundle
   })
+
+  it('throws on duplicate asset uuid', async () => {
+    await expect(
+      writeBundle({
+        scene: { nodes: {}, rootNodeIds: [] },
+        assets: [
+          { uuid: 'dup', name: 'A', glb: new Uint8Array([1]) },
+          { uuid: 'dup', name: 'B', glb: new Uint8Array([2]) },
+        ],
+        appVersion: '0.1.0',
+      }),
+    ).rejects.toThrow(/Duplicate asset uuid: dup/)
+  })
 })

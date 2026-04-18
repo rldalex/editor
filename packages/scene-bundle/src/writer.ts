@@ -50,6 +50,14 @@ export async function writeBundle(
 ): Promise<Blob> {
   const { scene, assets, houseName, haConfigUrl, appVersion } = options
 
+  const seen = new Set<string>()
+  for (const a of assets) {
+    if (seen.has(a.uuid)) {
+      throw new Error(`Duplicate asset uuid: ${a.uuid}`)
+    }
+    seen.add(a.uuid)
+  }
+
   const manifest: SceneBundleManifest = {
     version: 1,
     format: 'maison3d',
