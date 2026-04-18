@@ -148,9 +148,6 @@ export function HAVisualSystem() {
 
     // Initial snapshot
     let prevMappings: MappingMap = collectHAMappings(useScene.getState().nodes)
-    console.log(
-      `[HAVisualSystem] mount — ${prevMappings.size} mapped node(s) in initial snapshot`,
-    )
     for (const [nodeId, bindings] of prevMappings) {
       for (const b of bindings) registerBinding(nodeId, b)
     }

@@ -22,12 +22,8 @@ export function parseEmissive(visual: HAEmissiveVisual): ParsedEmissive {
 // Warn each entity at most once per "off-like" state to avoid log spam
 const warnedUnavailable = new Set<string>()
 
-// Seed value used to ensure MeshStandardNodeMaterial compiles its emissive
-// branch on the first render. We apply a near-zero seed at attach time so
-// the shader includes the emissive uniforms — subsequent mutations of
-// `emissive.copy()` + `emissiveIntensity` then hit a pipeline that actually
-// reads them.
-const SEED_INTENSITY = 0.0001
+// Tracks materials whose NodeMaterial graph has been forced to recompile
+// with the emissive branch active (see applyToOne for the rationale).
 const ATTACHED_FLAG = Symbol('haEmissiveSeeded')
 
 /**
@@ -65,10 +61,6 @@ export function applyEmissiveState(
   const color = isOn ? parsed.onColor : parsed.offColor
   const intensity = isOn ? parsed.intensityOn : parsed.intensityOff
 
-  console.log(
-    `[HAVisualSystem] apply ${binding.entityId} state=${haState} → intensity=${intensity} color=#${color.getHex().toString(16).padStart(6, '0')} on ${targets.length} mesh(es): ${targets.map((m) => m.name || '(unnamed)').join(', ')} matTypes=[${targets.map((m) => (Array.isArray(m.material) ? 'array' : (m.material as any)?.type ?? '?')).join(', ')}]`,
-  )
-
   for (const mesh of targets) {
     const mat = mesh.material
     if (Array.isArray(mat)) {
@@ -93,22 +85,20 @@ function applyToOne(
     return
   }
 
-  // First apply per material: seed with a non-zero emissive BEFORE the
-  // shader compiles so the emissive pipeline is included. We set emissive
-  // to the target color immediately (not a synthetic seed) and flag the
-  // material — this avoids any visible "flash" frame.
-  if (!mat[ATTACHED_FLAG]) {
-    mat.emissive.copy(color)
-    mat.emissiveIntensity = Math.max(intensity, SEED_INTENSITY)
-    mat.needsUpdate = true
-    mat[ATTACHED_FLAG] = true
-    console.log(
-      `[HAVisualSystem] seeded + attached emissive on mesh "${meshName || '(unnamed)'}" (first apply)`,
-    )
-    return
-  }
-
-  // Subsequent applies: hot path. The shader already reads emissive uniforms.
   mat.emissive.copy(color)
   mat.emissiveIntensity = intensity
+
+  // NodeMaterial (WebGPU/TSL) compiles its shader from a node graph. When
+  // `emissive` starts at (0,0,0) the TSL code generator optimises out the
+  // emissive branch entirely, so later mutations do nothing. `needsUpdate`
+  // alone doesn't rebuild the node graph — we need to bump `version` for
+  // three.js to re-evaluate the graph on the next frame. Doing this only
+  // once per material (first apply) keeps the hot path cheap; subsequent
+  // state changes are picked up by the recompiled shader reading the
+  // `emissive`/`emissiveIntensity` uniforms each frame.
+  if (!mat[ATTACHED_FLAG]) {
+    mat.version = (mat.version ?? 0) + 1
+    mat.needsUpdate = true
+    mat[ATTACHED_FLAG] = true
+  }
 }

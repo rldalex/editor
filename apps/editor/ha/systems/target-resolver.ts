@@ -39,10 +39,6 @@ export function resolveTargets(nodeId: AnyNodeId): Mesh[] | null {
   const matched = allMeshes.filter((m) => EMISSIVE_MESH_REGEX.test(m.name))
   const targets = matched.length > 0 ? matched : allMeshes
 
-  console.log(
-    `[target-resolver] ${nodeId}: ${allMeshes.length} mesh(es) total [${allMeshes.map((m) => m.name || '(unnamed)').join(', ')}], ${matched.length} matched regex, ${targets.length} target(s) after fallback`,
-  )
-
   for (const mesh of targets) {
     const m = mesh.material
     if (Array.isArray(m)) {
