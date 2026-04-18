@@ -5,7 +5,7 @@ connecter a Home Assistant.
 
 ## Statut actuel (2026-04-18)
 
-- PHASE 0 / 1 / 3 / 4 / 5 / 5.1 / 5.2 / 6 : DONE
+- PHASE 0 / 1 / 2 / 3 / 4 / 5 / 5.1 / 5.2 / 6 : DONE
   - PHASE 5/5.1/6 mergées sur main (PR #3 `feat/ha-phase-5-6`)
   - PHASE 5.2 + UI glow toggle sur `feat/ha-brightness` (2 commits, pas encore de PR)
   - `@maison-3d/ha-bridge` (WebSocket HA, hooks, store + `subscribeWithSelector`, services)
@@ -26,6 +26,16 @@ connecter a Home Assistant.
   - **PHASE 6** : `HAInteractionSystem` — tap/long-press → toggle / call_service, multi-touch
     safe, feedback scale 150ms découplé de la confirmation HA,
     stopPropagation sur tap pour empêcher Pascal de re-focus la caméra
+  - **PHASE 2** : `@maison-3d/glb-catalog` package complet — upload GLB
+    drag-drop, IndexedDB (dexie pour metadata/thumbnails, Pascal's
+    idb-keyval via `saveAsset`/`loadAssetUrl` pour les blobs GLB),
+    thumbnails WebGL2 offscreen auto-générées, auto-détection
+    category/domain via `apps/editor/ha/suggest.ts` (extension
+    `suggestCategoryAndDomain`), 3 seeds built-in (thumbnails générées
+    au first-boot + cachées en dexie `seedThumbnails` table), onglet
+    Catalogue dans la sidebar Pascal. Patch `ItemRenderer` (D-011) pour
+    support `asset://` URL cross-session, aligné avec ScanRenderer /
+    GuideRenderer.
   - Spec + plan : `docs/superpowers/specs/2026-04-18-ha-visual-interaction-systems-design.md`
     et `docs/superpowers/plans/2026-04-18-ha-visual-interaction-systems.md`
 - PHASE 9 (partielle) : import JSON mergé dans la PR #3
@@ -41,7 +51,6 @@ connecter a Home Assistant.
   - PHASE 7 : catalogue GLB (upload items custom) + `popup` actions
     (brightness slider, climate setpoint)
   - PHASE 8 : app kiosque (`apps/kiosk/`) pour tablette murale
-  - PHASE 2 : `@maison-3d/glb-catalog` package (prérequis PHASE 7)
   - Extensions `cover` visual (volets animés) + `label` visual (affichage
     valeur sur thermostat) + visuel `unavailable` dédié
 

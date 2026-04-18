@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### 2026-04-18 — feat (PHASE 2 glb-catalog)
+
+- `@maison-3d/glb-catalog` : nouveau package (schema, dexie storage,
+  thumbnail renderer WebGL2, auto-détection category/domain, hook
+  `useCatalog`).
+- `apps/editor/glb-catalog/` : adapter (UI panel + tiles + upload zone +
+  edit modal + `toAssetInput`).
+- Nouvel onglet **Catalogue** dans la sidebar Pascal (via `sidebarTabs`).
+- 3 seeds built-in (light-ceiling, volet-simple, prise-simple) servis
+  depuis `public/items/catalog-seed/`, non-supprimables. Thumbnails
+  générées au premier boot via `renderThumbnail(fetch(glb))` + cache
+  dexie table `seedThumbnails`.
+- D-011 : patch `ItemRenderer` (swap `resolveCdnUrl` → `useResolvedAssetUrl`
+  + split ModelRenderer/ModelRendererInner rules-of-hooks) pour supporter
+  `asset://` URL (alignement avec ScanRenderer/GuideRenderer).
+- Upload GLB : drag-drop + file picker, validation extension + taille 200MB,
+  stockage via Pascal `saveAsset()` (asset://uuid), metadata + thumbnail
+  WebP 256×256 dans notre dexie.
+- Scène persiste cross-session : `asset://uuid` résolu automatiquement au
+  render par le hook `useResolvedAssetUrl`.
+- Extension `apps/editor/ha/suggest.ts` : `suggestCategoryAndDomain()`
+  (pattern : mesh-first + filename-fallback, order specific→generic).
+
 ### 2026-04-18 — feat (local uploads + site rename + Agentation wiring)
 
 - `apps/editor/uploads/local-upload-handlers.ts` : handler local pour
