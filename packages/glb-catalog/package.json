@@ -1,0 +1,39 @@
+{
+  "name": "@maison-3d/glb-catalog",
+  "version": "0.1.0",
+  "description": "GLB catalog package for Maison 3D fork — user uploads, thumbnails, auto HA-domain detection",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "tsc --build --watch",
+    "check-types": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19"
+  },
+  "dependencies": {
+    "dexie": "^4",
+    "nanoid": "^5",
+    "three": "^0.183",
+    "zod": "^4",
+    "zustand": "^5"
+  },
+  "devDependencies": {
+    "@pascal/typescript-config": "*",
+    "@types/react": "^19.2.2",
+    "@types/three": "^0.183",
+    "typescript": "5.9.3"
+  }
+}
