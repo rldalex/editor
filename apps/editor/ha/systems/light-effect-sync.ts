@@ -1,8 +1,9 @@
 // apps/editor/ha/systems/light-effect-sync.ts
-import { useInteractive, useScene } from '@pascal-app/core'
+import { sceneRegistry, useInteractive, useScene } from '@pascal-app/core'
 import type { AnyNodeId, ItemNode } from '@pascal-app/core'
 import type { HAState } from '@maison-3d/ha-bridge'
 import { useItemLightPool } from '@pascal-app/viewer'
+import { Vector3, type PointLight } from 'three'
 
 /**
  * Locate the index of the first `toggle` control on an item's asset
@@ -93,10 +94,55 @@ export function syncLightColor(nodeId: AnyNodeId, haStateEntry: HAState | undefi
     mutated = true
   }
   if (mutated) {
-    // Force the store to emit a change so any derived subscribers refresh.
-    // ItemLightSystem reads via getState() so it doesn't strictly need
-    // this, but consistency-wise we don't want the Map reference to feel
-    // stale to other potential consumers.
     useItemLightPool.setState({ registrations: new Map(pool.registrations) })
   }
+
+  // Pascal's ItemLightSystem only calls `light.color.set(reg.effect.color)`
+  // when a pool slot is assigned to a *new* key (pass 2). When the same
+  // key stays on the same slot (pass 1 "keep existing"), the colour is
+  // never re-read. So mutating reg.effect.color alone doesn't visibly
+  // update a light that's currently shining on our item. Second leg:
+  // walk the scene for PointLights whose world position is near our
+  // item's light offset and mutate their .color directly.
+  mutatePointLightColor(nodeId, hex)
+}
+
+// Reused scratch Vector3 to avoid allocation in the RAF hot path.
+const _scratchVec = new Vector3()
+
+/**
+ * Find any active Three.js PointLight whose world position matches the
+ * mapped item's light offset (within a few units) and mutate its colour.
+ * Pool size is 12, traversal cost is trivial.
+ */
+function mutatePointLightColor(nodeId: AnyNodeId, hex: string): void {
+  const group = sceneRegistry.nodes.get(nodeId as string)
+  if (!group) return
+
+  // Walk up to the scene root — first ancestor with no parent.
+  let root: typeof group | null = group
+  while (root && root.parent) root = root.parent
+  if (!root) return
+
+  group.getWorldPosition(_scratchVec)
+  const itemX = _scratchVec.x
+  const itemY = _scratchVec.y
+  const itemZ = _scratchVec.z
+  // Allow for typical asset offsets (mostly vertical, up to ~2m).
+  // Items are typically spaced > 4m apart in a floor plan, so a 3-unit
+  // match radius reliably picks the right PointLight without cross-contam.
+  const THRESHOLD_SQ = 3 * 3
+
+  root.traverse((obj) => {
+    const light = obj as PointLight
+    if (!light.isPointLight) return
+    // Skip idle pool slots (intensity = 0 means "not assigned")
+    if (light.intensity < 0.01) return
+    const dx = light.position.x - itemX
+    const dy = light.position.y - itemY
+    const dz = light.position.z - itemZ
+    const distSq = dx * dx + dy * dy + dz * dz
+    if (distSq > THRESHOLD_SQ) return
+    light.color.set(hex)
+  })
 }
