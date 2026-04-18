@@ -12,3 +12,5 @@ export type {
   SceneBundleManifest,
   SceneBundleAsset,
 } from './manifest-schema'
+export { readBundle } from './reader'
+export type { ParsedBundle } from './reader'
