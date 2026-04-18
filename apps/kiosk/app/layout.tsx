@@ -1,3 +1,4 @@
+import { Agentation } from 'agentation'
 import type { Metadata, Viewport } from 'next'
 import { BootstrapGate } from '../components/BootstrapGate'
 import './globals.css'
@@ -23,6 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <BootstrapGate />
         {children}
+        {process.env.NODE_ENV === 'development' && (
+          <Agentation endpoint="http://localhost:4747" />
+        )}
       </body>
     </html>
   )
