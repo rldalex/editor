@@ -7,7 +7,7 @@ connecter a Home Assistant.
 
 - PHASE 0 / 1 / 2 / 3 / 4 / 5 / 5.1 / 5.2 / 6 : DONE
   - PHASE 5/5.1/6 mergées sur main (PR #3 `feat/ha-phase-5-6`)
-  - PHASE 5.2 + UI glow toggle sur `feat/ha-brightness` (2 commits, pas encore de PR)
+  - PHASE 5.2 + UI glow toggle + PHASE 2 + UI overrides + patch D-011 : mergés sur main (PR #4 `feat/ha-brightness`)
   - `@maison-3d/ha-bridge` (WebSocket HA, hooks, store + `subscribeWithSelector`, services)
   - `apps/editor/ha/` : schema + helpers + suggest + HAMappingPanel + HABootstrap + EditorWithHA
   - Panel HA injecté DANS l'ItemPanel Pascal via `createPortal` (sélecteur DOM + MutationObserver)
@@ -47,10 +47,26 @@ connecter a Home Assistant.
 - MCP `agentation` enregistré localement pour feedback visuel direct depuis
   l'app (server à lancer via `npx agentation-mcp server` sur port 4747)
 - Prochaines étapes :
-  - Ouvrir PR pour `feat/ha-brightness` (PHASE 5.2 + glow UI) → merge main
-  - PHASE 7 : catalogue GLB (upload items custom) + `popup` actions
-    (brightness slider, climate setpoint)
-  - PHASE 8 : app kiosque (`apps/kiosk/`) pour tablette murale
+  - **PHASE 8 brainstorm en cours** (5 sections design approuvées, spec pas
+    encore écrit). Décisions actées :
+    - Next.js app séparée `apps/kiosk/` (pas Vite, pas route /kiosk)
+    - Scope v1 : read-only + tap toggle (pas de popup long-press, PHASE 7
+      pas bloquante)
+    - Scene loading : bundle `.maison3d.zip` (PHASE 9 enriched) +
+      file picker override
+    - Refactor prealable : extraire `apps/editor/ha/systems/` → nouveau
+      package `@maison-3d/ha-systems` pour partage editor/kiosk
+    - Caméra : orbit libre + bouton reset flottant
+    - Config HA : wizard au premier boot, localStorage
+    - Overlays : horloge + nom maison + statut HA
+    - Wizard step-by-step (HAConfig → SceneLoad → Ready)
+    - Reste à faire : section 5 testing strategy approuvée, spec doc à
+      écrire (`docs/superpowers/specs/YYYY-MM-DD-kiosk-design.md`), plan
+      d'impl ensuite
+  - PHASE 9 enriched ZIP export/import (prérequis PHASE 8, inclus dans
+    le même spec/plan)
+  - PHASE 7 : `popup` actions long-press (brightness slider, climate
+    setpoint) — différé post-kiosk
   - Extensions `cover` visual (volets animés) + `label` visual (affichage
     valeur sur thermostat) + visuel `unavailable` dédié
 
