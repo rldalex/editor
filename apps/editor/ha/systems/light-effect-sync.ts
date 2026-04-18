@@ -5,29 +5,59 @@ import type { HAState } from '@maison-3d/ha-bridge'
 import { useItemLightPool } from '@pascal-app/viewer'
 import { Vector3, type PointLight } from 'three'
 
+export type LightControls = {
+  /** Index of the `kind:'toggle'` control, or -1. */
+  toggleIndex: number
+  /** Index of the first `kind:'slider'` control, or -1 if none. */
+  sliderIndex: number
+  /** Slider bounds (only meaningful when sliderIndex >= 0). */
+  sliderMin: number
+  sliderMax: number
+}
+
+const NO_LIGHT_CONTROLS: LightControls = {
+  toggleIndex: -1,
+  sliderIndex: -1,
+  sliderMin: 0,
+  sliderMax: 1,
+}
+
 /**
- * Locate the index of the first `toggle` control on an item's asset
- * interactive definition, or -1 if the asset has no such control or no
- * LightEffect to drive. Cached per-node to avoid re-scanning each frame.
+ * Locate the indices of the `toggle` and (optional) `slider` controls on
+ * an item's asset interactive definition. Returns indices -1 when the
+ * asset doesn't declare a `kind:'light'` effect — mapping a decorative
+ * figurine won't flip a toggle that does nothing visible, and won't log
+ * spurious warnings.
  *
- * We only return a valid index when BOTH conditions hold:
- *   - `asset.interactive.controls` contains a `kind: 'toggle'` entry
- *   - `asset.interactive.effects` contains at least one `kind: 'light'`
- * That way, mapping an item without a real Three.js light effect (e.g. a
- * decorative figurine) is a silent no-op — we won't flip a toggle that
- * does nothing visible, and we won't log spurious warnings.
+ * Cached per-binding at registration so the per-frame reapply loop
+ * doesn't re-scan the asset.
  */
-export function findToggleControlIndex(nodeId: AnyNodeId): number {
+export function findLightControls(nodeId: AnyNodeId): LightControls {
   const node = useScene.getState().nodes[nodeId] as ItemNode | undefined
-  if (!node || node.type !== 'item') return -1
+  if (!node || node.type !== 'item') return NO_LIGHT_CONTROLS
   const interactive = node.asset?.interactive
-  if (!interactive) return -1
+  if (!interactive) return NO_LIGHT_CONTROLS
 
   const hasLightEffect = interactive.effects?.some((e) => e.kind === 'light')
-  if (!hasLightEffect) return -1
+  if (!hasLightEffect) return NO_LIGHT_CONTROLS
 
-  const idx = interactive.controls?.findIndex((c) => c.kind === 'toggle') ?? -1
-  return idx
+  const toggleIndex = interactive.controls?.findIndex((c) => c.kind === 'toggle') ?? -1
+  const sliderIdx = interactive.controls?.findIndex((c) => c.kind === 'slider') ?? -1
+  const sliderControl =
+    sliderIdx >= 0 && interactive.controls
+      ? (interactive.controls[sliderIdx] as { kind: 'slider'; min: number; max: number })
+      : null
+  return {
+    toggleIndex,
+    sliderIndex: sliderIdx,
+    sliderMin: sliderControl?.min ?? 0,
+    sliderMax: sliderControl?.max ?? 1,
+  }
+}
+
+/** @deprecated use findLightControls — kept as a shim for call sites we haven't rewritten yet */
+export function findToggleControlIndex(nodeId: AnyNodeId): number {
+  return findLightControls(nodeId).toggleIndex
 }
 
 /**
@@ -50,6 +80,39 @@ export function syncLightEffect(
   const current = useInteractive.getState().items[nodeId]?.controlValues?.[toggleIndex]
   if (current === isOn) return // avoid triggering renderers on no-op sets
   useInteractive.getState().setControlValue(nodeId, toggleIndex, isOn)
+}
+
+/**
+ * Sync HA's `brightness` attribute (0-255) to Pascal's slider control on
+ * the item's asset. Normalises into the slider's declared range (typically
+ * 0-100 for a percentage dial). Pascal's `ItemLightSystem` reads this
+ * slider value each frame (see `item-light-system.tsx:269-277`) so the
+ * PointLight intensity follows the slider — and therefore follows HA's
+ * brightness — without any extra plumbing.
+ *
+ * No-op when:
+ *   - the asset has no slider control (sliderIndex < 0)
+ *   - the entity is off (brightness is undefined / 0 when off, but we don't
+ *     want to zero the slider and lose the user's last intensity pref;
+ *     Pascal uses `intensityRange[0]` automatically when toggle is false)
+ *   - the attribute is absent (non-dimmable switch entity)
+ */
+export function syncLightBrightness(
+  nodeId: AnyNodeId,
+  sliderIndex: number,
+  sliderMin: number,
+  sliderMax: number,
+  haStateEntry: HAState | undefined,
+): void {
+  if (sliderIndex < 0) return
+  if (!haStateEntry || haStateEntry.state !== 'on') return
+  const brightness = haStateEntry.attributes?.brightness
+  if (typeof brightness !== 'number') return
+  // HA brightness is 0-255; map linearly into Pascal's slider range.
+  const normalized = Math.round(sliderMin + (brightness / 255) * (sliderMax - sliderMin))
+  const current = useInteractive.getState().items[nodeId]?.controlValues?.[sliderIndex]
+  if (current === normalized) return
+  useInteractive.getState().setControlValue(nodeId, sliderIndex, normalized)
 }
 
 /** Convert HA's rgb_color tuple [0-255, 0-255, 0-255] to a CSS hex string. */
