@@ -19,6 +19,7 @@
         "@maison-3d/glb-catalog": "workspace:*",
         "@maison-3d/ha-bridge": "*",
         "@maison-3d/ha-systems": "workspace:*",
+        "@maison-3d/scene-bundle": "workspace:*",
         "@number-flow/react": "^0.5.14",
         "@pascal-app/core": "*",
         "@pascal-app/editor": "*",
