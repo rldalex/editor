@@ -64,7 +64,7 @@ async function buildCatalogIndex(): Promise<Map<string, GLBAsset>> {
  * expose an imperative thumbnail-blob getter, and the task constraints
  * forbid touching that package. The manifest schema marks thumbnails as
  * optional, so kiosk consumers can either render on demand or show a
- * placeholder — see D-xxx in DECISIONS.md.
+ * placeholder — see D-015 in DECISIONS.md.
  */
 export async function exportSceneBundle(
   houseName: string,
@@ -73,6 +73,10 @@ export async function exportSceneBundle(
   const { nodes, rootNodeIds } = useScene.getState()
   const uuids = collectAssetUuids(nodes)
   const catalogIndex = await buildCatalogIndex()
+  // Coerce empty string to undefined so the manifest omits the field entirely
+  // instead of storing an empty string that kiosk overlays would render as a
+  // blank house name (they'd skip the fallback "Maison" otherwise).
+  const houseNameNormalized = houseName.trim() || undefined
 
   const assets: BundleAssetInput[] = []
   for (const uuid of uuids) {
@@ -105,7 +109,7 @@ export async function exportSceneBundle(
       rootNodeIds: rootNodeIds as unknown as string[],
     },
     assets,
-    houseName,
+    houseName: houseNameNormalized,
     appVersion,
   })
 }

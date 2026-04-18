@@ -216,3 +216,31 @@ Consequence :
 - 2e modification d'un fichier Pascal existant (apres D-006).
 - Au merge upstream, privilegier nos versions si conflits sur ces 2 fichiers
   jusqu'a ce qu'upstream adopte le fix.
+
+## D-015 : Thumbnails omises du bundle .maison3d.zip v1
+Date : 2026-04-18
+Contexte : PHASE 9 enriched (Task B5 — scene-bundle wiring editor)
+
+Les thumbnails WebP des GLBs du catalogue ne sont PAS inclus dans le bundle
+exporté aujourd'hui.
+
+Raison : `@maison-3d/glb-catalog` n'expose pas de getter imperatif pour les
+thumbnails (la table `thumbnails` Dexie est privee, seul `uploadGLB()` ecrit
+dedans). Le manifest zod les marque `.optional()`, donc le bundle reste
+valide sans.
+
+Strategie cote consommateur :
+- L'editeur sur re-import : `uploadGLB()` regenere la thumbnail au moment du
+  rehydrate (coute ~20ms par asset via `renderThumbnail` WebGL2 offscreen).
+- Le kiosk : rendra les thumbnails à la demande dans son UI catalogue (s'il
+  a une UI catalogue en v1, ce qui n'est PAS le scope C1-C9).
+
+Consequence :
+- Un bundle exporte + importe sur un autre device aura des thumbnails
+  regenerees, pas les thumbnails originales. Pour les seeds ou les user
+  uploads avec thumbnail custom, c'est acceptable (meme source = meme
+  render deterministe).
+- A revoir : si on decide d'exposer `dbGetThumbnail(id)` comme export public
+  de `@maison-3d/glb-catalog`, migrer `bundle-export.ts` pour les inclure
+  en meme temps qu'un helper `rehydrateAssetFast` qui skip le render au
+  re-import (voir I4 de la code review B5).
