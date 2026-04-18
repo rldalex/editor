@@ -1,10 +1,15 @@
 import { unzipSync, strFromU8 } from 'fflate'
-import { SceneBundleManifestSchema, type SceneBundleManifest } from './manifest-schema'
+import {
+  SceneBundleManifestSchema,
+  HAConfigSchema,
+  type SceneBundleManifest,
+  type HAConfig,
+} from './manifest-schema'
 
 export type ParsedBundle = {
   manifest: SceneBundleManifest
   scene: { nodes: Record<string, any>; rootNodeIds: string[] }
-  haConfig: { url: string | null }
+  haConfig: HAConfig
   assets: Map<string, { glb: Uint8Array; thumbnail?: Uint8Array }>
   missingAssets: string[] // uuids referenced in scene but absent from zip
 }
@@ -43,8 +48,8 @@ export async function readBundle(file: Blob | File): Promise<ParsedBundle> {
   }
 
   const haConfigRaw = entries['ha-config.json']
-  const haConfig = haConfigRaw
-    ? (JSON.parse(strFromU8(haConfigRaw)) as { url: string | null })
+  const haConfig: HAConfig = haConfigRaw
+    ? HAConfigSchema.parse(JSON.parse(strFromU8(haConfigRaw)))
     : { url: null }
 
   const assets = new Map<string, { glb: Uint8Array; thumbnail?: Uint8Array }>()

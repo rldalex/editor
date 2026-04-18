@@ -1,5 +1,10 @@
 import { z } from 'zod'
 
+export const HAConfigSchema = z.object({
+  url: z.string().nullable(),
+})
+export type HAConfig = z.infer<typeof HAConfigSchema>
+
 export const SceneBundleAssetSchema = z.object({
   uuid: z.string(),
   path: z.string(),
