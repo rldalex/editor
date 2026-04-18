@@ -22,20 +22,20 @@ export function parseEmissive(visual: HAEmissiveVisual): ParsedEmissive {
 // Warn each entity at most once per "off-like" state to avoid log spam
 const warnedUnavailable = new Set<string>()
 
-// Tracks materials whose NodeMaterial graph has been forced to recompile
-// with the emissive branch active (see applyToOne for the rationale).
-const ATTACHED_FLAG = Symbol('haEmissiveSeeded')
+// Flag per material: set once after we've bumped its version to force the
+// NodeMaterial's shader to recompile with the emissive branch active. Next
+// frames just mutate uniforms.
+const COMPILED_FLAG = Symbol('haEmissiveCompiled')
 
 /**
  * Maps an HA state string to the visual pair (color, intensity) and applies
  * it to all target meshes. Treats unavailable/unknown/undefined as off (v1
  * kiosk policy, see spec §4.5).
  *
- * First apply per mesh "seeds" the material with a non-zero emissive so the
- * MeshStandardNodeMaterial (WebGPU/TSL) compiles its shader WITH the
- * emissive branch. Without this seed, if initial emissive is black the TSL
- * code generator omits the emissive pipeline entirely and later uniform
- * mutations have no effect.
+ * Called every frame by the RAF loop in HAVisualSystem to compensate for
+ * Pascal's <Clone> swapping materials back. The hot path is a Color.copy +
+ * number assign per mesh — the version bump to recompile the NodeMaterial
+ * shader happens once per (fresh) material via the COMPILED_FLAG.
  */
 export function applyEmissiveState(
   binding: HAEntityBinding,
@@ -75,30 +75,23 @@ function applyToOne(
   mat: any,
   color: Color,
   intensity: number,
-  meshName: string,
+  _meshName: string,
 ): void {
   if (!mat) return
-  if (!('emissive' in mat)) {
-    console.warn(
-      `HAVisualSystem: mesh "${meshName}" material ${mat.type ?? '?'} has no emissive, skipping`,
-    )
-    return
-  }
+  if (!('emissive' in mat)) return // silently skip; material type unsupported
 
   mat.emissive.copy(color)
   mat.emissiveIntensity = intensity
 
   // NodeMaterial (WebGPU/TSL) compiles its shader from a node graph. When
-  // `emissive` starts at (0,0,0) the TSL code generator optimises out the
-  // emissive branch entirely, so later mutations do nothing. `needsUpdate`
-  // alone doesn't rebuild the node graph — we need to bump `version` for
-  // three.js to re-evaluate the graph on the next frame. Doing this only
-  // once per material (first apply) keeps the hot path cheap; subsequent
-  // state changes are picked up by the recompiled shader reading the
-  // `emissive`/`emissiveIntensity` uniforms each frame.
-  if (!mat[ATTACHED_FLAG]) {
+  // `emissive` is (0,0,0) at compile time, the TSL code generator optimises
+  // the emissive branch out entirely. Bumping `material.version` forces
+  // three.js to re-evaluate the graph on the next frame, reintegrating the
+  // emissive branch that reads our updated uniforms. Done once per material
+  // (first time we see it with our flag absent).
+  if (!mat[COMPILED_FLAG]) {
     mat.version = (mat.version ?? 0) + 1
     mat.needsUpdate = true
-    mat[ATTACHED_FLAG] = true
+    mat[COMPILED_FLAG] = true
   }
 }

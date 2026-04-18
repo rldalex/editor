@@ -5,11 +5,11 @@ import { useEffect } from 'react'
 import type { Mesh } from 'three'
 import { invalidate } from '@react-three/fiber'
 import { haStore } from '@maison-3d/ha-bridge'
-import { useScene } from '@pascal-app/core'
+import { sceneRegistry, useScene } from '@pascal-app/core'
 import type { AnyNodeId } from '@pascal-app/core'
 import type { HAEntityBinding, HAEmissiveVisual } from '../schema'
 import { collectHAMappings, reconcileMappings, type MappingMap } from './mapping-registry'
-import { resolveTargets } from './target-resolver'
+import { ensureCloned, resolveTargets } from './target-resolver'
 import { parseEmissive, applyEmissiveState, type ParsedEmissive } from './emissive-visual'
 
 type RegisteredBinding = {
@@ -18,6 +18,8 @@ type RegisteredBinding = {
   binding: HAEntityBinding
   parsed: ParsedEmissive
   targets: Mesh[] | null
+  /** Last HA state observed for this binding — driven by the subscribe. */
+  lastHAState: string | undefined
   unsubHA: () => void
 }
 
@@ -75,6 +77,7 @@ export function HAVisualSystem() {
         binding,
         parsed: parseEmissive(binding.visual as HAEmissiveVisual),
         targets: null,
+        lastHAState: undefined,
         unsubHA: () => {},
       }
       registered.set(key, reg)
@@ -83,8 +86,8 @@ export function HAVisualSystem() {
         s.states[binding.entityId]?.state
       reg.unsubHA = haStore.subscribe(
         selector,
-        (next, prev) => {
-          if (next === prev) return
+        (next) => {
+          reg.lastHAState = next
           applyVisual(reg, next)
         },
         { fireImmediately: true },
@@ -176,9 +179,51 @@ export function HAVisualSystem() {
     // Explicit drain once after all setup — idempotent, covers race case A
     drainPending()
 
+    // Persistent RAF loop: Pascal's <Clone> from drei re-instanciates mesh
+    // materials on its own re-render cadence, silently swapping them back
+    // to the shared `baseMaterial` singleton. Each frame we:
+    //   1. Drop targets whose Group is no longer in the sceneRegistry.
+    //   2. If the Group is fresh, re-resolve targets from scratch.
+    //   3. For each target mesh, `ensureCloned` re-clones the material if
+    //      Pascal has swapped it back (no-op if our clone is still there).
+    //   4. Re-apply the last observed HA state.
+    // Writes are cheap (Color.copy + number assign + flag check per mesh).
+    let rafId: number | null = null
+    function reapplyLoop() {
+      for (const reg of registered.values()) {
+        const currentGroup = sceneRegistry.nodes.get(reg.nodeId as string)
+        if (!currentGroup) {
+          reg.targets = null
+          continue
+        }
+        // If we have no targets, or the first target was detached from the
+        // current Group (Pascal re-instanciated the whole sub-tree),
+        // resolve from scratch.
+        const firstTarget = reg.targets?.[0]
+        const needsRefresh =
+          !reg.targets ||
+          reg.targets.length === 0 ||
+          !firstTarget ||
+          !currentGroup.getObjectById(firstTarget.id)
+        if (needsRefresh) {
+          const fresh = resolveTargets(reg.nodeId)
+          if (fresh === null) continue
+          reg.targets = fresh
+        } else {
+          // Targets still valid, but Pascal may have swapped the material
+          // on each mesh back to the singleton. Re-clone where needed.
+          for (const mesh of reg.targets!) ensureCloned(mesh)
+        }
+        applyEmissiveState(reg.binding, reg.parsed, reg.targets!, reg.lastHAState)
+      }
+      rafId = requestAnimationFrame(reapplyLoop)
+    }
+    rafId = requestAnimationFrame(reapplyLoop)
+
     return () => {
       clearInterval(timer)
       unsubScene()
+      if (rafId !== null) cancelAnimationFrame(rafId)
       for (const reg of registered.values()) reg.unsubHA()
       registered.clear()
       pending.clear()
