@@ -24,7 +24,9 @@
     "react": "^18 || ^19"
   },
   "dependencies": {
+    "@pascal-app/core": "workspace:*",
     "dexie": "^4",
+    "idb-keyval": "^6",
     "nanoid": "^5",
     "three": "^0.183",
     "zod": "^4",

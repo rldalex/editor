@@ -150,7 +150,9 @@
       "name": "@maison-3d/glb-catalog",
       "version": "0.1.0",
       "dependencies": {
+        "@pascal-app/core": "workspace:*",
         "dexie": "^4",
+        "idb-keyval": "^6",
         "nanoid": "^5",
         "three": "^0.183",
         "zod": "^4",
