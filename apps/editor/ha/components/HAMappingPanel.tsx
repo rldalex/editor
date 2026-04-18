@@ -224,6 +224,14 @@ function HAMappingSections({ node }: { node: ItemNode }) {
   const [domain, setDomain] = useState(existingBinding?.domain ?? '')
   const [visualKind, setVisualKind] = useState<VisualKind>(existingBinding?.visual?.kind ?? 'none')
   const [tapKind, setTapKind] = useState<ActionKind>(existingBinding?.tapAction?.kind ?? 'none')
+  // "Glow" controls whether the mesh itself lights up (emissive > 0), in
+  // addition to the real PointLight that may fire from the asset's
+  // LightEffect. Stored as intensityOn/intensityOff in the binding.
+  const [glow, setGlow] = useState<boolean>(
+    existingBinding?.visual?.kind === 'emissive'
+      ? (existingBinding.visual.intensityOn ?? 1.5) > 0
+      : true,
+  )
 
   useEffect(() => {
     const b = getHAMapping(node)?.bindings[0]
@@ -231,6 +239,9 @@ function HAMappingSections({ node }: { node: ItemNode }) {
     setDomain(b?.domain ?? '')
     setVisualKind(b?.visual?.kind ?? 'none')
     setTapKind(b?.tapAction?.kind ?? 'none')
+    setGlow(
+      b?.visual?.kind === 'emissive' ? (b.visual.intensityOn ?? 1.5) > 0 : true,
+    )
   }, [node.id])
 
   const canSave = entityId !== '' && domain !== ''
@@ -238,7 +249,13 @@ function HAMappingSections({ node }: { node: ItemNode }) {
   const onSave = () => {
     if (!canSave) return
     const visual: HAVisualMapping | undefined =
-      visualKind === 'emissive' ? { kind: 'emissive' } : undefined
+      visualKind === 'emissive'
+        ? {
+            kind: 'emissive',
+            intensityOn: glow ? 1.5 : 0,
+            intensityOff: 0,
+          }
+        : undefined
     const tapAction: HAAction | undefined =
       tapKind === 'toggle' ? { kind: 'toggle' } : undefined
 
@@ -257,6 +274,7 @@ function HAMappingSections({ node }: { node: ItemNode }) {
     setDomain('')
     setVisualKind('none')
     setTapKind('none')
+    setGlow(true)
   }
 
   return (
@@ -286,6 +304,20 @@ function HAMappingSections({ node }: { node: ItemNode }) {
 
       <Section title="Visuel">
         <Select value={visualKind} options={VISUAL_KINDS} onChange={setVisualKind} />
+        {visualKind === 'emissive' && (
+          <label className="mt-1.5 flex cursor-pointer items-center gap-2 rounded-md border border-border/50 bg-[#2C2C2E] px-2 py-1.5 text-xs text-foreground hover:bg-[#3e3e3e]">
+            <input
+              type="checkbox"
+              checked={glow}
+              onChange={(e) => setGlow(e.target.checked)}
+              className="h-3.5 w-3.5 cursor-pointer accent-primary"
+            />
+            <span className="flex-1">Faire glow le mesh quand allumé</span>
+            <span className="text-[10px] text-muted-foreground">
+              {glow ? 'oui' : 'non'}
+            </span>
+          </label>
+        )}
       </Section>
 
       <Section title="Action au tap">

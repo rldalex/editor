@@ -135,3 +135,42 @@ export function suggestEntities(
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
 }
+
+// --- PHASE 2 glb-catalog : auto-détection category + domain from mesh/filename ---
+
+/**
+ * Category used by @maison-3d/glb-catalog. Duplicated here to avoid a workspace
+ * cycle (glb-catalog will import `suggestCategoryAndDomain` via a DI wrapper).
+ * Must stay in sync with `Category` in `@maison-3d/glb-catalog/src/schema.ts`.
+ */
+type Category = 'light' | 'cover' | 'sensor' | 'furniture' | 'uncategorized'
+type HADomainHint = 'light' | 'switch' | 'cover' | 'fan' | 'climate' | 'sensor' | null
+
+const PREFIX_TO_CATEGORY_DOMAIN: Array<{
+  prefixes: string[]
+  category: Category
+  domain: HADomainHint
+}> = [
+  // Order matters: specific before generic.
+  { prefixes: ['thermostat_', 'clim_', 'climate_', 'chauffage_'], category: 'sensor', domain: 'climate' },
+  { prefixes: ['light_', 'lampe_', 'lamp_'], category: 'light', domain: 'light' },
+  { prefixes: ['volet_', 'store_', 'cover_', 'rideau_'], category: 'cover', domain: 'cover' },
+  { prefixes: ['prise_', 'switch_', 'plug_'], category: 'furniture', domain: 'switch' },
+  { prefixes: ['capteur_', 'sensor_'], category: 'sensor', domain: 'sensor' },
+  { prefixes: ['ventilo_', 'fan_'], category: 'furniture', domain: 'fan' },
+  { prefixes: ['tv_', 'media_', 'speaker_', 'enceinte_'], category: 'furniture', domain: null },
+  { prefixes: ['porte_', 'fenetre_', 'fenêtre_', 'window_', 'door_'], category: 'furniture', domain: null },
+]
+
+export function suggestCategoryAndDomain(name: string): {
+  category: Category
+  domain: HADomainHint
+} {
+  const lower = name.toLowerCase()
+  for (const entry of PREFIX_TO_CATEGORY_DOMAIN) {
+    if (entry.prefixes.some((p) => lower.startsWith(p))) {
+      return { category: entry.category, domain: entry.domain }
+    }
+  }
+  return { category: 'uncategorized', domain: null }
+}

@@ -5,6 +5,7 @@ import type { ComponentProps } from 'react'
 import { HABootstrap } from './HABootstrap'
 import { HAMappingPanel } from './components/HAMappingPanel'
 import { SceneIORegistration } from '../scene-io/SceneIORegistration'
+import { SiteRenameInjector } from '../ui-overrides/SiteRenameInjector'
 import { HAVisualSystem, HAInteractionSystem } from './systems'
 
 /**
@@ -18,6 +19,7 @@ export function EditorWithHA(props: ComponentProps<typeof Editor>) {
       <HAVisualSystem />
       <HAInteractionSystem />
       <SceneIORegistration />
+      <SiteRenameInjector />
       <Editor {...props} />
       <HAMappingPanel />
     </>

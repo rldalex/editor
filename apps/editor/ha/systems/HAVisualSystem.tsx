@@ -11,7 +11,13 @@ import type { HAEntityBinding, HAEmissiveVisual } from '../schema'
 import { collectHAMappings, reconcileMappings, type MappingMap } from './mapping-registry'
 import { ensureCloned, resolveTargets } from './target-resolver'
 import { parseEmissive, applyEmissiveState, type ParsedEmissive } from './emissive-visual'
-import { findToggleControlIndex, syncLightColor, syncLightEffect } from './light-effect-sync'
+import {
+  findLightControls,
+  syncLightBrightness,
+  syncLightColor,
+  syncLightEffect,
+  type LightControls,
+} from './light-effect-sync'
 
 type RegisteredBinding = {
   bindingKey: string
@@ -21,10 +27,10 @@ type RegisteredBinding = {
   targets: Mesh[] | null
   /** Last HA state observed for this binding — driven by the subscribe. */
   lastHAState: string | undefined
-  /** Index of a `kind:'toggle'` control on the asset's interactive spec
-   *  when the asset also declares a `kind:'light'` effect. -1 otherwise.
-   *  Cached at registration so the per-frame reapply loop doesn't rescan. */
-  toggleIndex: number
+  /** Indices + bounds of the asset's toggle / slider controls, when the
+   *  asset declares a `kind:'light'` effect. Cached at registration so the
+   *  per-frame reapply loop doesn't rescan the asset. */
+  lightControls: LightControls
   unsubHA: () => void
 }
 
@@ -83,7 +89,7 @@ export function HAVisualSystem() {
         parsed: parseEmissive(binding.visual as HAEmissiveVisual),
         targets: null,
         lastHAState: undefined,
-        toggleIndex: findToggleControlIndex(nodeId),
+        lightControls: findLightControls(nodeId),
         unsubHA: () => {},
       }
       registered.set(key, reg)
@@ -94,9 +100,17 @@ export function HAVisualSystem() {
         selector,
         (next) => {
           reg.lastHAState = next
+          const haEntry = haStore.getState().states[binding.entityId]
           applyVisual(reg, next)
-          syncLightEffect(reg.nodeId, reg.toggleIndex, next)
-          syncLightColor(reg.nodeId, haStore.getState().states[binding.entityId])
+          syncLightEffect(reg.nodeId, reg.lightControls.toggleIndex, next)
+          syncLightColor(reg.nodeId, haEntry)
+          syncLightBrightness(
+            reg.nodeId,
+            reg.lightControls.sliderIndex,
+            reg.lightControls.sliderMin,
+            reg.lightControls.sliderMax,
+            haEntry,
+          )
         },
         { fireImmediately: true },
       )
@@ -228,10 +242,20 @@ export function HAVisualSystem() {
         // the mesh glow; this makes the room actually get lit. Independent
         // so an item can have one without the other (e.g. intensityOn=0
         // for light-only, or an asset without a light effect for glow-only).
-        syncLightEffect(reg.nodeId, reg.toggleIndex, reg.lastHAState)
+        syncLightEffect(reg.nodeId, reg.lightControls.toggleIndex, reg.lastHAState)
+        const haEntry = haStore.getState().states[reg.binding.entityId]
         // Also sync the light colour to HA's rgb_color attribute when
         // present, so the Three.js PointLight's photons match the bulb.
-        syncLightColor(reg.nodeId, haStore.getState().states[reg.binding.entityId])
+        syncLightColor(reg.nodeId, haEntry)
+        // And sync dimmer: HA's brightness attribute (0-255) → Pascal
+        // slider control → PointLight intensity each frame.
+        syncLightBrightness(
+          reg.nodeId,
+          reg.lightControls.sliderIndex,
+          reg.lightControls.sliderMin,
+          reg.lightControls.sliderMax,
+          haEntry,
+        )
       }
       rafId = requestAnimationFrame(reapplyLoop)
     }

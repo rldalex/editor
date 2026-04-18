@@ -2,6 +2,68 @@
 
 ## [Unreleased]
 
+### 2026-04-18 — feat (PHASE 2 glb-catalog)
+
+- `@maison-3d/glb-catalog` : nouveau package (schema, dexie storage,
+  thumbnail renderer WebGL2, auto-détection category/domain, hook
+  `useCatalog`).
+- `apps/editor/glb-catalog/` : adapter (UI panel + tiles + upload zone +
+  edit modal + `toAssetInput`).
+- Nouvel onglet **Catalogue** dans la sidebar Pascal (via `sidebarTabs`).
+- 3 seeds built-in (light-ceiling, volet-simple, prise-simple) servis
+  depuis `public/items/catalog-seed/`, non-supprimables. Thumbnails
+  générées au premier boot via `renderThumbnail(fetch(glb))` + cache
+  dexie table `seedThumbnails`.
+- D-011 : patch `ItemRenderer` (swap `resolveCdnUrl` → `useResolvedAssetUrl`
+  + split ModelRenderer/ModelRendererInner rules-of-hooks) pour supporter
+  `asset://` URL (alignement avec ScanRenderer/GuideRenderer).
+- Upload GLB : drag-drop + file picker, validation extension + taille 200MB,
+  stockage via Pascal `saveAsset()` (asset://uuid), metadata + thumbnail
+  WebP 256×256 dans notre dexie.
+- Scène persiste cross-session : `asset://uuid` résolu automatiquement au
+  render par le hook `useResolvedAssetUrl`.
+- Extension `apps/editor/ha/suggest.ts` : `suggestCategoryAndDomain()`
+  (pattern : mesh-first + filename-fallback, order specific→generic).
+
+### 2026-04-18 — feat (local uploads + site rename + Agentation wiring)
+
+- `apps/editor/uploads/local-upload-handlers.ts` : handler local pour
+  l'upload scan/floorplan (bouton "Upload scan/floorplan" du SitePanel).
+  Crée un blob URL via `URL.createObjectURL(file)` + un `ScanNode`/
+  `GuideNode` via `useScene.createNode`. `localDeleteAsset` revoke le
+  blob URL. Câblé dans `app/page.tsx` via `sitePanelProps`.
+- `apps/editor/ui-overrides/SiteRenameInjector.tsx` : override
+  non-invasif pour renommer le nom du site. Pattern
+  `MutationObserver` + `createPortal` (comme `HAMappingPanel`) —
+  trouve le `<img alt="Site">` + son `<span>` voisin, ajoute la
+  classe `group` sur le container, porte un bouton pencil + input
+  inline. Même UX que `InlineRenameInput` Pascal (pencil sur hover,
+  Enter sauve, Escape annule). Aucun fichier Pascal modifié.
+- `apps/editor/app/layout.tsx` : prop `endpoint="http://localhost:4747"`
+  sur `<Agentation />` — sans ça, les annotations du browser
+  n'arrivaient pas dans le store MCP partagé. Les `agentation_*`
+  tool calls Claude Code voyaient sessions vides malgré le webhook
+  Auto-Send activé.
+- `apps/editor/ha/components/HAMappingPanel.tsx` : retrait du texte
+  "(light seule)" à côté de la case "non" du checkbox glow — le
+  label affiche maintenant juste "oui" / "non".
+
+### 2026-04-18 — feat (PHASE 5.2 + UI glow toggle)
+
+- PHASE 5.2 : la lumière Pascal suit maintenant l'attribut `brightness`
+  HA (0-255) en temps réel. `findToggleControlIndex` renommé/étendu en
+  `findLightControls` qui retourne aussi le `sliderIndex` + bounds du
+  control slider de l'asset (typiquement 0-100 pour un % dial).
+  Nouveau `syncLightBrightness` dans `apps/editor/ha/systems/light-effect-sync.ts`
+  qui normalise linéairement brightness HA → slider Pascal via
+  `useInteractive.setControlValue`. Pascal's ItemLightSystem lit ce
+  slider chaque frame pour lerp l'intensity du PointLight → suivi HA
+  gratuit côté Pascal.
+- UI : ajout d'un checkbox "Faire glow le mesh quand allumé" dans le
+  panel HA Mapping, visible sous le select Visuel quand `kind:'emissive'`.
+  Persisté comme `intensityOn: 1.5` (coché) / `0` (décoché). Permet de
+  choisir light-only vs glow+light sans passer par la DevTools console.
+
 ### 2026-04-18 — feat (PHASE 5 + 5.1 + 6)
 
 - PHASE 5.1 : `HAVisualSystem` pilote aussi les `LightEffect` Pascal

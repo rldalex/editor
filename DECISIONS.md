@@ -167,3 +167,52 @@ Rationale :
 Consequence :
 - C'est notre seule modification d'un fichier Pascal existant a ce stade
 - En cas de merge upstream, privilegier notre version (`--ours` sur ce fichier)
+
+## D-011 : Align ItemRenderer with Pascal's own asset:// pattern
+Date : 2026-04-18
+Contexte : PHASE 2 glb-catalog (spike technique avant plan d'impl)
+
+Pascal possède déjà une infrastructure `asset://` complète via
+`saveAsset()` / `loadAssetUrl()` dans `@pascal-app/core`, utilisée par
+`ScanRenderer` et `GuideRenderer` via le hook `useAssetUrl`. Mais
+`ItemRenderer` était l'exception — il utilisait le sync `resolveCdnUrl`
+qui ne gère pas `asset://` (warn + return null).
+
+Conséquence sans patch : tout GLB uploadé par l'user (`asset://<uuid>`)
+ne pourrait pas être rendu par Pascal. Pour PHASE 2, soit fork de
+~250 lignes (NodeRenderer + ItemRenderer) dans notre code, soit
+alignement Pascal via patch local.
+
+Décision : patch local de 2 fichiers dans packages/viewer/ :
+- NOUVEAU : packages/viewer/src/hooks/use-resolved-asset-url.ts (~30 lignes)
+  Hook sync-callable qui wrappe resolveAssetUrl (handle asset:// + CDN + http).
+- PATCH : packages/viewer/src/components/renderers/item/item-renderer.tsx
+  - Swap import : resolveCdnUrl -> useResolvedAssetUrl
+  - Split ModelRenderer en 2 composants (rules-of-hooks : useGLTF ne peut
+    pas etre conditionnel, donc parent resolve async + null guard, enfant
+    appele useGLTF avec src resolved).
+
+Rationale :
+- Alignement interne Pascal avec son propre pattern (Scan/Guide renderers),
+  pas une divergence. C'est un bug fix.
+- Le split en 2 composants est le pattern React standard quand un hook
+  async gate le render. Pas une reconstruction, juste rules-of-hooks
+  compliance.
+- Le fork aurait impose une dette technique lourde (double maintenance
+  a chaque upstream sync sur les renderers, fichiers parmi les plus
+  actifs du codebase Pascal).
+
+Smoke tests (validés avant commit) :
+- Tesla + pillar + Floor Lamp (items built-in) rendent toujours apres
+  le patch. CDN path non-casse par useResolvedAssetUrl (resolveAssetUrl
+  prepend ASSETS_CDN_URL pour les paths).
+- Console propre (pas de warnings nouveaux).
+
+Upstream candidate : oui. A soumettre apres stabilisation locale.
+Si Pascal upstream ship une solution differente au meme bug ->
+revert de notre patch, adopter upstream.
+
+Consequence :
+- 2e modification d'un fichier Pascal existant (apres D-006).
+- Au merge upstream, privilegier nos versions si conflits sur ces 2 fichiers
+  jusqu'a ce qu'upstream adopte le fix.
