@@ -5,7 +5,7 @@ connecter a Home Assistant.
 
 ## Statut actuel (2026-04-18)
 
-- PHASE 0 / 1 / 2 / 3 / 4 / 5 / 5.1 / 5.2 / 6 : DONE
+- PHASE 0 / 1 / 2 / 3 / 4 / 5 / 5.1 / 5.2 / 6 / 8 / 9 enriched : DONE
   - PHASE 5/5.1/6 mergées sur main (PR #3 `feat/ha-phase-5-6`)
   - PHASE 5.2 + UI glow toggle + PHASE 2 + UI overrides + patch D-011 : mergés sur main (PR #4 `feat/ha-brightness`)
   - `@maison-3d/ha-bridge` (WebSocket HA, hooks, store + `subscribeWithSelector`, services)
@@ -36,35 +36,37 @@ connecter a Home Assistant.
     Catalogue dans la sidebar Pascal. Patch `ItemRenderer` (D-011) pour
     support `asset://` URL cross-session, aligné avec ScanRenderer /
     GuideRenderer.
+  - **PHASE 8** : `apps/kiosk/` app Next.js 16 sur port 3003 (D-012),
+    wizard 3 étapes (HAConfig → SceneLoad → Ready), viewer read-only
+    monté avec `<HAVisualSystem />` + `<HAInteractionSystem scope="kiosk" />`,
+    OrbitControls + bouton reset, overlays (horloge, nom maison, badge
+    HA status, bouton config long-press 800ms), auto-resume via
+    `BootstrapGate` qui skippe le wizard si `haUrl+haToken+bundleMeta`
+    présents, viewport locked pour Fully Kiosk Browser.
+  - **PHASE 9 enriched** : `@maison-3d/scene-bundle` (fflate + zod manifest
+    v1, D-013), format `.maison3d.zip` (scene + ha-config sans token +
+    assets GLB + thumbnails optionnelles). Commands palette
+    `editor.export.bundle` + `editor.import.bundle`. Import remap les
+    uuids asset via `uploadGLB()` pour régénérer thumbnails (D-015).
+  - **Refactor** : extraction `apps/editor/ha/systems/` → package
+    `@maison-3d/ha-systems` (D-014) pour partage editor+kiosk, avec
+    shims re-export dans `apps/editor/ha/systems/index.ts` et
+    `apps/editor/ha/schema.ts`.
   - Spec + plan : `docs/superpowers/specs/2026-04-18-ha-visual-interaction-systems-design.md`
     et `docs/superpowers/plans/2026-04-18-ha-visual-interaction-systems.md`
-- PHASE 9 (partielle) : import JSON mergé dans la PR #3
+  - Spec + plan PHASE 8+9 : `docs/superpowers/specs/2026-04-18-kiosk-design.md`
+    et `docs/superpowers/plans/2026-04-18-kiosk.md`
+- PHASE 9 (partielle, JSON) : import JSON mergé dans la PR #3
 - POC `/ha-test` validé live : 2107 entités HA + toggles OK
 - Validation live end-to-end PHASE 5/5.1/5.2/6 contre `homeassistant.lightshift.fr`
   via Chrome DevTools MCP : lampe Hue Spot 1 mappée, glow/light/couleur/
   brightness suivent HA en temps réel
+- Validation live end-to-end PHASE 8+9 : bundle exporté depuis editor →
+  importé sur kiosk → tap sur lampe mappée → toggle HA confirmé
 - Collaborateur : `ttotttur` (frère) ajouté avec write access
 - MCP `agentation` enregistré localement pour feedback visuel direct depuis
   l'app (server à lancer via `npx agentation-mcp server` sur port 4747)
 - Prochaines étapes :
-  - **PHASE 8 brainstorm en cours** (5 sections design approuvées, spec pas
-    encore écrit). Décisions actées :
-    - Next.js app séparée `apps/kiosk/` (pas Vite, pas route /kiosk)
-    - Scope v1 : read-only + tap toggle (pas de popup long-press, PHASE 7
-      pas bloquante)
-    - Scene loading : bundle `.maison3d.zip` (PHASE 9 enriched) +
-      file picker override
-    - Refactor prealable : extraire `apps/editor/ha/systems/` → nouveau
-      package `@maison-3d/ha-systems` pour partage editor/kiosk
-    - Caméra : orbit libre + bouton reset flottant
-    - Config HA : wizard au premier boot, localStorage
-    - Overlays : horloge + nom maison + statut HA
-    - Wizard step-by-step (HAConfig → SceneLoad → Ready)
-    - Reste à faire : section 5 testing strategy approuvée, spec doc à
-      écrire (`docs/superpowers/specs/YYYY-MM-DD-kiosk-design.md`), plan
-      d'impl ensuite
-  - PHASE 9 enriched ZIP export/import (prérequis PHASE 8, inclus dans
-    le même spec/plan)
   - PHASE 7 : `popup` actions long-press (brightness slider, climate
     setpoint) — différé post-kiosk
   - Extensions `cover` visual (volets animés) + `label` visual (affichage
@@ -83,16 +85,18 @@ connecter a Home Assistant.
 ```
 maison-3d/
 ├── apps/
-│   ├── editor/           # App Next.js Pascal + extensions HA
+│   ├── editor/           # App Next.js Pascal + extensions HA (port 3002)
 │   │   ├── [fichiers Pascal inchanges]
-│   │   ├── ha/           # AJOUTE - couche HA (mapping, systems, panels)
+│   │   ├── ha/           # AJOUTE - couche HA (mapping, panels, shims systems)
 │   │   ├── catalog/      # AJOUTE - catalogue objets GLB
-│   │   └── scene-io/     # AJOUTE - export/import scene JSON
-│   └── kiosk/            # AJOUTE - app tablette (Vite ou Next.js)
+│   │   └── scene-io/     # AJOUTE - export/import scene JSON + bundle ZIP
+│   └── kiosk/            # AJOUTE - app tablette Next.js 16 (port 3003)
 ├── packages/
 │   ├── core/             # PASCAL - schemas, scene state, systems
 │   ├── viewer/           # PASCAL - rendu R3F
 │   ├── ha-bridge/        # AJOUTE - bridge Home Assistant
+│   ├── ha-systems/       # AJOUTE - HAVisualSystem + HAInteractionSystem (partage editor/kiosk)
+│   ├── scene-bundle/     # AJOUTE - format .maison3d.zip (reader/writer, manifest v1)
 │   └── glb-catalog/      # AJOUTE - catalogue objets + upload
 └── ...
 ```

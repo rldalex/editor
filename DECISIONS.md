@@ -244,3 +244,77 @@ Consequence :
   de `@maison-3d/glb-catalog`, migrer `bundle-export.ts` pour les inclure
   en meme temps qu'un helper `rehydrateAssetFast` qui skip le render au
   re-import (voir I4 de la code review B5).
+
+## D-012 : apps/kiosk = Next.js séparée sur port 3003, pas Vite
+Date : 2026-04-18
+
+La PHASE 4 du brief suggérait Vite pour le kiosk (bundle plus léger sur
+tablette). Choix final : Next.js, même stack que l'editor, port 3003.
+
+Rationale :
+- `@pascal-app/viewer` et `@pascal-app/core` sont consommés via le
+  `transpilePackages` de Next.js ; dupliquer cette config côté Vite
+  ajouterait du maintenance (résolution Three.js, R3F, etc.).
+- Turbopack `resolveAlias` (idem editor) suffit à éviter les duplicates
+  react/three qui cassent R3F.
+- Le `bun dev` unique à la racine lance les deux apps en parallèle
+  (editor :3002, kiosk :3003) via turbo — DX simpler que Vite.
+- Bundle size n'est pas un bloqueur sur tablette moderne (Fully Kiosk
+  cache les assets après premier load).
+
+Conséquence :
+- Deux apps Next.js dans le monorepo. Upstream Pascal ne s'en préoccupe
+  pas (c'est notre fork).
+
+## D-013 : Format bundle .maison3d.zip v1
+Date : 2026-04-18
+
+Le bundle de transfert scène ↔ kiosque est une archive ZIP standard
+(fflate, 8KB gzipped, pas de natif) contenant :
+
+```
+scene.maison3d.zip
+├── manifest.json     ← zod SceneBundleManifestSchema v1
+├── scene.json        ← { nodes, rootNodeIds } (format Pascal)
+├── ha-config.json    ← { url: string | null }, JAMAIS le token
+└── assets/
+    ├── <uuid>.glb    ← blobs GLB référencés par asset://<uuid>
+    └── thumbnails/
+        └── <uuid>.webp  ← optionnel
+```
+
+Rationale :
+- Format ouvert (le user peut unzip pour debug/archive).
+- Manifest zod-validé à l'import (trust boundary).
+- Écrit par `writeBundle()`, relu par `readBundle()`. Round-trip unit-tested.
+- Token HA explicitement exclu (pas de champ `token` dans le schema).
+  Le kiosk a son propre long-lived token renseigné dans son wizard.
+
+Conséquence :
+- Version stamping `version: z.literal(1)` : bump si le format évolue
+  incompatiblement. Ajouts backward-compat via nouveaux champs optionnels.
+- Thumbnails omises pour l'instant côté editor export (voir D-015).
+
+## D-014 : Extraction @maison-3d/ha-systems en package partagé
+Date : 2026-04-18
+
+Déplacement de `apps/editor/ha/systems/` vers un nouveau package
+`packages/ha-systems/` pour partage editor + kiosk sans duplication.
+
+Rationale :
+- Le kiosk a besoin des mêmes systèmes R3F (HAVisualSystem pour
+  l'émissive/couleur/brightness, HAInteractionSystem pour le tap) sans
+  traîner le reste du code editor.
+- L'extraction est mécanique (pas de logique editor-only dans les
+  systèmes) — simple déplacement + adaptation des imports
+  relatifs.
+- `apps/editor/ha/systems/index.ts` et `apps/editor/ha/schema.ts`
+  deviennent des re-export shims pour ne pas toucher les call-sites
+  existants (HAMappingPanel, mapping-helpers, EditorWithHA).
+
+Conséquence :
+- 13 fichiers dans le nouveau package (8 systèmes + schema + barrel +
+  3 tests).
+- `HAInteractionSystem` gagne une prop optionnelle `scope?: 'editor'|'kiosk'`
+  — en kiosk, les actions `popup` sont no-op avec warn-once par entité
+  (PHASE 7 différée post-kiosk).

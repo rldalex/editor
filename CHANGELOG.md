@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+### 2026-04-18 — feat (PHASE 8 + 9 enriched)
+
+- `@maison-3d/ha-systems` : extraction de `apps/editor/ha/systems/` en
+  package partagé editor+kiosk. Transitionnel : `apps/editor/ha/systems/index.ts`
+  et `apps/editor/ha/schema.ts` re-exportent depuis le nouveau package pour
+  ne pas toucher les call-sites existants (HAMappingPanel, mapping-helpers,
+  EditorWithHA). 8 fichiers d'implémentation déplacés + 3 fichiers de tests
+  (`git mv`). `HAInteractionSystem` étendu avec prop `scope?: 'editor'|'kiosk'`
+  — en kiosk, les actions `popup` sont no-op avec warn-once par entité.
+- `@maison-3d/scene-bundle` : nouveau package, lecture/écriture
+  `.maison3d.zip` (fflate + zod manifest v1). Writer extrait automatiquement
+  les `entityId` HA des `node.metadata.ha.bindings`, refuse les uuids
+  dupliqués. Reader valide le manifest via zod, détecte les assets
+  référencés mais absents, supporte round-trip thumbnails. `HAConfigSchema`
+  (url nullable) valide aussi `ha-config.json` au parse. 14 tests unitaires.
+- `apps/editor/scene-io/bundle-{export,import}.ts` : deux commandes palette
+  Pascal `editor.export.bundle` + `editor.import.bundle`. Export passe par
+  `loadAssetUrl` + `fetch` pour récupérer les bytes GLB depuis Pascal's
+  IDB, enrichit name/category via `listAssets()` de glb-catalog. Import
+  réhydrate via `uploadGLB()` (régénère thumbnail + populate catalog) et
+  remap les uuids dans `scene.nodes[*].asset.src` avant
+  `applySceneGraphToEditor`. Thumbnails non embedded (voir D-015).
+- `apps/kiosk/` : nouvelle app Next.js 16 sur port 3003, indépendante de
+  l'editor. Wizard 3 étapes (HAConfig → SceneLoad → Ready), viewer
+  minimal qui monte `<Viewer selectionManager="custom">` de Pascal + nos
+  `HAVisualSystem` + `HAInteractionSystem scope="kiosk"`. Kiosk bypasse
+  `uploadGLB` au chargement de bundle (~20ms par asset de thumbnail
+  rendering sauté) et utilise `saveAsset()` direct — pas de catalogue
+  côté kiosk. OrbitControls + bouton reset caméra floating. Overlays
+  horloge + nom maison + badge HA status + bouton config long-press
+  (800ms) pour revenir au wizard. `BootstrapGate` auto-resume depuis
+  `localStorage` au boot (skippe le wizard si `haUrl+haToken+bundleMeta`
+  présents). Viewport locked `user-scalable=no, maximum-scale=1` pour
+  Fully Kiosk Browser. Turbopack resolveAlias pour éviter les duplicates
+  react/three.
+- `apps/kiosk/state/` : `kiosk-store` (machine d'état wizard) + `config-store`
+  (Zustand persist localStorage, jamais le token dans un bundle exporté).
+- Validé live end-to-end contre `homeassistant.lightshift.fr` : bundle
+  exporté depuis editor → importé sur kiosk → tap sur lampe mappée →
+  toggle HA confirmé.
+
+Spec : `docs/superpowers/specs/2026-04-18-kiosk-design.md`
+Plan : `docs/superpowers/plans/2026-04-18-kiosk.md`
+
 ### 2026-04-18 — feat (PHASE 2 glb-catalog)
 
 - `@maison-3d/glb-catalog` : nouveau package (schema, dexie storage,
