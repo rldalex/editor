@@ -184,6 +184,26 @@
         "react": "^18 || ^19",
       },
     },
+    "packages/ha-systems": {
+      "name": "@maison-3d/ha-systems",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@pascal/typescript-config": "*",
+        "@types/react": "^19.2.2",
+        "@types/three": "^0.183",
+        "typescript": "5.9.3",
+      },
+      "peerDependencies": {
+        "@maison-3d/ha-bridge": "workspace:*",
+        "@pascal-app/core": "workspace:*",
+        "@pascal-app/viewer": "workspace:*",
+        "@react-three/drei": "*",
+        "@react-three/fiber": "*",
+        "react": "^18 || ^19",
+        "react-dom": "^18 || ^19",
+        "three": "^0.183",
+      },
+    },
     "packages/typescript-config": {
       "name": "@repo/typescript-config",
       "version": "0.0.0",
@@ -450,6 +470,8 @@
     "@maison-3d/glb-catalog": ["@maison-3d/glb-catalog@workspace:packages/glb-catalog"],
 
     "@maison-3d/ha-bridge": ["@maison-3d/ha-bridge@workspace:packages/ha-bridge"],
+
+    "@maison-3d/ha-systems": ["@maison-3d/ha-systems@workspace:packages/ha-systems"],
 
     "@mediapipe/tasks-vision": ["@mediapipe/tasks-vision@0.10.17", "", {}, "sha512-CZWV/q6TTe8ta61cZXjfnnHsfWIdFhms03M9T7Cnd5y2mdpylJM0rF1qRq+wsQVRMLz1OYPVEBU9ph2Bx8cxrg=="],
 

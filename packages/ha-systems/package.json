@@ -1,0 +1,39 @@
+{
+  "name": "@maison-3d/ha-systems",
+  "version": "0.1.0",
+  "description": "Systèmes R3F HA (visual + interaction) pour Maison 3D fork",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "tsc --build --watch",
+    "check-types": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19",
+    "three": "^0.183",
+    "@react-three/fiber": "*",
+    "@react-three/drei": "*",
+    "@pascal-app/core": "workspace:*",
+    "@pascal-app/viewer": "workspace:*",
+    "@maison-3d/ha-bridge": "workspace:*"
+  },
+  "devDependencies": {
+    "@pascal/typescript-config": "*",
+    "@types/react": "^19.2.2",
+    "@types/three": "^0.183",
+    "typescript": "5.9.3"
+  }
+}
