@@ -9,6 +9,17 @@ const nextConfig: NextConfig = {
     '@maison-3d/scene-bundle',
     'three',
   ],
+  // Pin react/three/r3f/drei to this app's node_modules so turbopack never
+  // resolves duplicates via bun hoisting — R3F breaks silently when three
+  // or react is loaded twice (singleton identity).
+  turbopack: {
+    resolveAlias: {
+      react: './node_modules/react',
+      three: './node_modules/three',
+      '@react-three/fiber': './node_modules/@react-three/fiber',
+      '@react-three/drei': './node_modules/@react-three/drei',
+    },
+  },
   experimental: {
     serverActions: { bodySizeLimit: '100mb' },
   },
