@@ -1,4 +1,3 @@
-// apps/editor/ha/systems/target-resolver.ts
 import { sceneRegistry } from '@pascal-app/core'
 import type { AnyNodeId } from '@pascal-app/core'
 import type { Mesh, Material } from 'three'

@@ -1,7 +1,6 @@
-// apps/editor/ha/systems/emissive-visual.ts
 import { Color } from 'three'
 import type { Mesh } from 'three'
-import type { HAEmissiveVisual, HAEntityBinding } from '../schema'
+import type { HAEmissiveVisual, HAEntityBinding } from './schema'
 
 export type ParsedEmissive = {
   onColor: Color

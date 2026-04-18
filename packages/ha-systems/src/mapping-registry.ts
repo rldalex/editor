@@ -1,5 +1,5 @@
 import type { AnyNode, AnyNodeId } from '@pascal-app/core'
-import { HA_METADATA_KEY, type HAEntityBinding, type HAMapping } from '../schema'
+import { HA_METADATA_KEY, type HAEntityBinding, type HAMapping } from './schema'
 
 export type MappingMap = Map<AnyNodeId, HAEntityBinding[]>
 

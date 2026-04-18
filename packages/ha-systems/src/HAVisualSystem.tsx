@@ -1,4 +1,3 @@
-// apps/editor/ha/systems/HAVisualSystem.tsx
 'use client'
 
 import { useEffect } from 'react'
@@ -7,7 +6,7 @@ import { invalidate } from '@react-three/fiber'
 import { haStore } from '@maison-3d/ha-bridge'
 import { sceneRegistry, useScene } from '@pascal-app/core'
 import type { AnyNodeId } from '@pascal-app/core'
-import type { HAEntityBinding, HAEmissiveVisual } from '../schema'
+import type { HAEntityBinding, HAEmissiveVisual } from './schema'
 import { collectHAMappings, reconcileMappings, type MappingMap } from './mapping-registry'
 import { ensureCloned, resolveTargets } from './target-resolver'
 import { parseEmissive, applyEmissiveState, type ParsedEmissive } from './emissive-visual'

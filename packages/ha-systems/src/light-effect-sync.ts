@@ -1,4 +1,3 @@
-// apps/editor/ha/systems/light-effect-sync.ts
 import { sceneRegistry, useInteractive, useScene } from '@pascal-app/core'
 import type { AnyNodeId, ItemNode } from '@pascal-app/core'
 import type { HAState } from '@maison-3d/ha-bridge'

@@ -18,6 +18,8 @@
       "dependencies": {
         "@maison-3d/glb-catalog": "workspace:*",
         "@maison-3d/ha-bridge": "*",
+        "@maison-3d/ha-systems": "workspace:*",
+        "@maison-3d/scene-bundle": "workspace:*",
         "@number-flow/react": "^0.5.14",
         "@pascal-app/core": "*",
         "@pascal-app/editor": "*",
@@ -46,6 +48,33 @@
         "react-grab": "^0.1.25",
         "react-scan": "^0.5.3",
         "tw-animate-css": "^1.4.0",
+        "typescript": "5.9.3",
+      },
+    },
+    "apps/kiosk": {
+      "name": "kiosk",
+      "version": "0.1.0",
+      "dependencies": {
+        "@maison-3d/ha-bridge": "workspace:*",
+        "@maison-3d/ha-systems": "workspace:*",
+        "@maison-3d/scene-bundle": "workspace:*",
+        "@pascal-app/core": "*",
+        "@pascal-app/viewer": "*",
+        "@react-three/drei": "^10.7.7",
+        "@react-three/fiber": "^9.5.0",
+        "agentation": "^2.3.2",
+        "next": "16.2.1",
+        "react": "^19.2.4",
+        "react-dom": "^19.2.4",
+        "three": "^0.183.1",
+        "zustand": "^5",
+      },
+      "devDependencies": {
+        "@pascal/typescript-config": "*",
+        "@types/node": "^22.19.12",
+        "@types/react": "19.2.2",
+        "@types/react-dom": "19.2.2",
+        "@types/three": "^0.183.0",
         "typescript": "5.9.3",
       },
     },
@@ -182,6 +211,36 @@
       },
       "peerDependencies": {
         "react": "^18 || ^19",
+      },
+    },
+    "packages/ha-systems": {
+      "name": "@maison-3d/ha-systems",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@pascal/typescript-config": "*",
+        "@types/react": "^19.2.2",
+        "@types/three": "^0.183",
+        "typescript": "5.9.3",
+      },
+      "peerDependencies": {
+        "@maison-3d/ha-bridge": "workspace:*",
+        "@pascal-app/core": "workspace:*",
+        "@pascal-app/viewer": "workspace:*",
+        "@react-three/fiber": "*",
+        "react": "^18 || ^19",
+        "three": "^0.183",
+      },
+    },
+    "packages/scene-bundle": {
+      "name": "@maison-3d/scene-bundle",
+      "version": "0.1.0",
+      "dependencies": {
+        "fflate": "^0.8",
+        "zod": "^4",
+      },
+      "devDependencies": {
+        "@pascal/typescript-config": "*",
+        "typescript": "5.9.3",
       },
     },
     "packages/typescript-config": {
@@ -450,6 +509,10 @@
     "@maison-3d/glb-catalog": ["@maison-3d/glb-catalog@workspace:packages/glb-catalog"],
 
     "@maison-3d/ha-bridge": ["@maison-3d/ha-bridge@workspace:packages/ha-bridge"],
+
+    "@maison-3d/ha-systems": ["@maison-3d/ha-systems@workspace:packages/ha-systems"],
+
+    "@maison-3d/scene-bundle": ["@maison-3d/scene-bundle@workspace:packages/scene-bundle"],
 
     "@mediapipe/tasks-vision": ["@mediapipe/tasks-vision@0.10.17", "", {}, "sha512-CZWV/q6TTe8ta61cZXjfnnHsfWIdFhms03M9T7Cnd5y2mdpylJM0rF1qRq+wsQVRMLz1OYPVEBU9ph2Bx8cxrg=="],
 
@@ -1087,6 +1150,8 @@
 
     "keyv": ["keyv@4.5.4", "", { "dependencies": { "json-buffer": "3.0.1" } }, "sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw=="],
 
+    "kiosk": ["kiosk@workspace:apps/kiosk"],
+
     "kleur": ["kleur@3.0.3", "", {}, "sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w=="],
 
     "levn": ["levn@0.4.1", "", { "dependencies": { "prelude-ls": "^1.2.1", "type-check": "~0.4.0" } }, "sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ=="],
@@ -1523,6 +1588,10 @@
 
     "glob/minimatch": ["minimatch@10.2.4", "", { "dependencies": { "brace-expansion": "^5.0.2" } }, "sha512-oRjTw/97aTBN0RHbYCdtF1MQfvusSIBQM0IZEgzl6426+8jSC0nF1a/GmnVLpfB9yyr6g6FTqWqiZVbxrtaCIg=="],
 
+    "kiosk/@types/node": ["@types/node@22.19.15", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-F0R/h2+dsy5wJAUe3tAU6oqa2qbWY5TpNfL/RGmo1y38hiyO1w3x2jPtt76wmuaJI4DQnOBu21cNXQ2STIUUWg=="],
+
+    "kiosk/@types/react": ["@types/react@19.2.2", "", { "dependencies": { "csstype": "^3.0.2" } }, "sha512-6mDvHUFSjyT2B2yeNx2nUgMxh9LtOWvkhIU3uePn2I2oyNymUAX1NIsdgviM4CH+JSrp2D2hsMvJOkxY+0wNRA=="],
+
     "log-symbols/chalk": ["chalk@5.6.2", "", {}, "sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA=="],
 
     "log-symbols/is-unicode-supported": ["is-unicode-supported@1.3.0", "", {}, "sha512-43r2mRvz+8JRIKnWJ+3j8JtjRKZ6GmjzfaE/qiBJnikNnYv/6bagRJ1kUhNk8R5EX/GkobD+r+sfxCPJsiKBLQ=="],
@@ -1552,6 +1621,8 @@
     "editor/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "glob/minimatch/brace-expansion": ["brace-expansion@5.0.5", "", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-VZznLgtwhn+Mact9tfiwx64fA9erHH/MCXEUfB/0bX/6Fz6ny5EGTXYltMocqg4xFAQZtnO3DHWWXi8RiuN7cQ=="],
+
+    "kiosk/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "next/postcss/nanoid": ["nanoid@3.3.11", "", { "bin": { "nanoid": "bin/nanoid.cjs" } }, "sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w=="],
 

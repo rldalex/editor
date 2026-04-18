@@ -1,6 +1,8 @@
-// Le schema HA est maintenant partagé via @maison-3d/ha-systems. Ce fichier
-// est un re-export pour ne pas casser les call-sites existants de l'éditeur.
-export { HA_METADATA_KEY } from '@maison-3d/ha-systems'
+export { HAVisualSystem } from './HAVisualSystem'
+export { HAInteractionSystem } from './HAInteractionSystem'
+export {
+  HA_METADATA_KEY,
+} from './schema'
 export type {
   HAEntityBinding,
   HAMapping,
@@ -16,4 +18,4 @@ export type {
   HAPopupType,
   HANavigateAction,
   HANoneAction,
-} from '@maison-3d/ha-systems'
+} from './schema'

@@ -1,13 +1,18 @@
-// apps/editor/ha/systems/HAInteractionSystem.tsx
 'use client'
 
 import { useEffect } from 'react'
 import { invalidate } from '@react-three/fiber'
 import { emitter, sceneRegistry, useScene } from '@pascal-app/core'
 import type { AnyNodeId, ItemEvent } from '@pascal-app/core'
-import type { HAEntityBinding } from '../schema'
+import type { HAEntityBinding } from './schema'
 import { collectHAMappings, reconcileMappings, type MappingMap } from './mapping-registry'
-import { HANDLERS, shouldFire, validateAction } from './action-handlers'
+import {
+  dispatchAction,
+  HANDLERS,
+  shouldFire,
+  validateAction,
+  type DispatchScope,
+} from './action-handlers'
 import { animationManager } from './animation-manager'
 
 type RegisteredAction = {
@@ -67,6 +72,7 @@ function fireAction(
   nodeId: AnyNodeId,
   binding: HAEntityBinding,
   trigger: 'tap' | 'longPress',
+  scope: DispatchScope,
 ) {
   if (!shouldFire(nodeId as string, binding, trigger)) return
 
@@ -77,10 +83,23 @@ function fireAction(
   if (!handler) return // already logged at registration
 
   triggerVisualFeedback(nodeId)
-  handler(binding, action) // fire-and-forget, errors caught inside handler
+  // fire-and-forget via dispatchAction, which honors `scope` (kiosk no-ops
+  // popup actions with warn-once). Errors inside handlers are caught internally.
+  dispatchAction(action, binding, { scope })
 }
 
-export function HAInteractionSystem() {
+interface HAInteractionSystemProps {
+  /**
+   * Dispatch scope. In `'kiosk'` mode, popup actions are no-op'd (with a
+   * one-time warn per entity) because the kiosk has no popup UI. Defaults
+   * to `'editor'`.
+   */
+  scope?: DispatchScope
+}
+
+export function HAInteractionSystem({
+  scope = 'editor',
+}: HAInteractionSystemProps = {}) {
   useEffect(() => {
     const actionRegistry = new Map<AnyNodeId, RegisteredAction[]>()
     const pressState = new Map<number, PressEntry>() // pointerId → entry
@@ -138,7 +157,7 @@ export function HAInteractionSystem() {
       const timer = setTimeout(() => {
         for (const rec of records) {
           if (rec.validLongPress && rec.binding.longPressAction) {
-            fireAction(nodeId, rec.binding, 'longPress')
+            fireAction(nodeId, rec.binding, 'longPress', scope)
           }
         }
         pressState.delete(pid)
@@ -187,7 +206,7 @@ export function HAInteractionSystem() {
       let fired = false
       for (const rec of records) {
         if (rec.validTap && rec.binding.tapAction) {
-          fireAction(e.node.id, rec.binding, 'tap')
+          fireAction(e.node.id, rec.binding, 'tap', scope)
           fired = true
         }
       }
@@ -215,7 +234,7 @@ export function HAInteractionSystem() {
       pressState.clear()
       actionRegistry.clear()
     }
-  }, [])
+  }, [scope])
 
   return null
 }

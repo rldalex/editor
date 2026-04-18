@@ -1,0 +1,82 @@
+.clock {
+  position: fixed;
+  top: 1rem;
+  left: 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 300;
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+.houseName {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1rem;
+  color: #ccc;
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.haStatus {
+  position: fixed;
+  top: 1rem;
+  right: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #ccc;
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.dotOk,
+.dotWarn,
+.dotErr {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dotOk {
+  background: #4a4;
+  box-shadow: 0 0 6px rgba(74, 170, 74, 0.6);
+}
+
+.dotWarn {
+  background: #da4;
+  box-shadow: 0 0 6px rgba(218, 170, 68, 0.6);
+}
+
+.dotErr {
+  background: #c44;
+  box-shadow: 0 0 6px rgba(200, 68, 68, 0.6);
+}
+
+.configButton {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #888;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  transition: background 0.2s, color 0.2s;
+}
+
+.configButton:hover,
+.configButton:active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
