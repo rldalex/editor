@@ -5,7 +5,9 @@ connecter a Home Assistant.
 
 ## Statut actuel (2026-04-18)
 
-- PHASE 0 / 1 / 3 / 4 / 5 / 5.1 / 6 : DONE
+- PHASE 0 / 1 / 3 / 4 / 5 / 5.1 / 5.2 / 6 : DONE
+  - PHASE 5/5.1/6 mergées sur main (PR #3 `feat/ha-phase-5-6`)
+  - PHASE 5.2 + UI glow toggle sur `feat/ha-brightness` (2 commits, pas encore de PR)
   - `@maison-3d/ha-bridge` (WebSocket HA, hooks, store + `subscribeWithSelector`, services)
   - `apps/editor/ha/` : schema + helpers + suggest + HAMappingPanel + HABootstrap + EditorWithHA
   - Panel HA injecté DANS l'ItemPanel Pascal via `createPortal` (sélecteur DOM + MutationObserver)
@@ -13,23 +15,35 @@ connecter a Home Assistant.
     survivre aux re-renders Pascal (`<Clone>` drei swap les matériaux),
     `material.version++` pour recompiler le NodeMaterial shader WebGPU
   - **PHASE 5.1** : pilotage des `LightEffect` Pascal depuis HA via
-    `useInteractive.setControlValue` — la lampe éclaire vraiment la pièce,
-    pas juste son abat-jour. Indépendant du glow (intensityOn=0 possible).
+    `useInteractive.setControlValue` (toggle) + mutation directe du PointLight
+    `.color` (traverse Three.js scene) pour suivre `rgb_color` HA en live.
+    Indépendant du glow — `intensityOn=0` possible pour light-only.
+  - **PHASE 5.2** : brightness HA (0-255) → slider Pascal (0-100) via
+    `syncLightBrightness`. Pascal lerp déjà le slider vers PointLight
+    intensity chaque frame → dimmer HA suivi automatiquement.
+  - **UI glow toggle** : checkbox "Faire glow le mesh quand allumé" dans
+    le panel HA Mapping (pilote `intensityOn: 1.5` / `0`).
   - **PHASE 6** : `HAInteractionSystem` — tap/long-press → toggle / call_service, multi-touch
-    safe, feedback scale 150ms découplé de la confirmation HA
+    safe, feedback scale 150ms découplé de la confirmation HA,
+    stopPropagation sur tap pour empêcher Pascal de re-focus la caméra
   - Spec + plan : `docs/superpowers/specs/2026-04-18-ha-visual-interaction-systems-design.md`
     et `docs/superpowers/plans/2026-04-18-ha-visual-interaction-systems.md`
-  - Branche en cours : `feat/ha-phase-5-6` (à merger après validation manuelle end-to-end)
-- PHASE 9 (partielle) : import JSON sur `feat/scene-io` — en attente de test par le frère
+- PHASE 9 (partielle) : import JSON mergé dans la PR #3
 - POC `/ha-test` validé live : 2107 entités HA + toggles OK
+- Validation live end-to-end PHASE 5/5.1/5.2/6 contre `homeassistant.lightshift.fr`
+  via Chrome DevTools MCP : lampe Hue Spot 1 mappée, glow/light/couleur/
+  brightness suivent HA en temps réel
 - Collaborateur : `ttotttur` (frère) ajouté avec write access
-- MCP `agentation` enregistré localement pour feedback visuel direct depuis l'app
+- MCP `agentation` enregistré localement pour feedback visuel direct depuis
+  l'app (server à lancer via `npx agentation-mcp server` sur port 4747)
 - Prochaines étapes :
-  - Validation manuelle PHASE 5/6 contre HA live (7 scénarios cf plan Task 11)
-  - PHASE 5.1 : `cover` visual (volets animés) + `sourceAttribute: 'brightness'` pour les
-    dimmers (extension rétro-compat du schema)
-  - PHASE 7 : `popup` actions (brightness slider, climate setpoint) + catalogue GLB
-  - PHASE 2 (catalogue GLB custom) reste reportée (priorité 4 du BRIEF)
+  - Ouvrir PR pour `feat/ha-brightness` (PHASE 5.2 + glow UI) → merge main
+  - PHASE 7 : catalogue GLB (upload items custom) + `popup` actions
+    (brightness slider, climate setpoint)
+  - PHASE 8 : app kiosque (`apps/kiosk/`) pour tablette murale
+  - PHASE 2 : `@maison-3d/glb-catalog` package (prérequis PHASE 7)
+  - Extensions `cover` visual (volets animés) + `label` visual (affichage
+    valeur sur thermostat) + visuel `unavailable` dédié
 
 ## Commandes essentielles (heritees de Pascal)
 

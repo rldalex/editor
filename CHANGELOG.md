@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### 2026-04-18 — feat (PHASE 5.2 + UI glow toggle)
+
+- PHASE 5.2 : la lumière Pascal suit maintenant l'attribut `brightness`
+  HA (0-255) en temps réel. `findToggleControlIndex` renommé/étendu en
+  `findLightControls` qui retourne aussi le `sliderIndex` + bounds du
+  control slider de l'asset (typiquement 0-100 pour un % dial).
+  Nouveau `syncLightBrightness` dans `apps/editor/ha/systems/light-effect-sync.ts`
+  qui normalise linéairement brightness HA → slider Pascal via
+  `useInteractive.setControlValue`. Pascal's ItemLightSystem lit ce
+  slider chaque frame pour lerp l'intensity du PointLight → suivi HA
+  gratuit côté Pascal.
+- UI : ajout d'un checkbox "Faire glow le mesh quand allumé" dans le
+  panel HA Mapping, visible sous le select Visuel quand `kind:'emissive'`.
+  Persisté comme `intensityOn: 1.5` (coché) / `0` (décoché). Permet de
+  choisir light-only vs glow+light sans passer par la DevTools console.
+
 ### 2026-04-18 — feat (PHASE 5 + 5.1 + 6)
 
 - PHASE 5.1 : `HAVisualSystem` pilote aussi les `LightEffect` Pascal
