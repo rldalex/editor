@@ -12,8 +12,15 @@
   pas juste l'objet qui glow). Les deux sont indépendants : `intensityOn:0`
   donne light-only sans glow, un asset sans LightEffect donne glow-only.
   - `apps/editor/ha/systems/light-effect-sync.ts` : `findToggleControlIndex`
-    + `syncLightEffect` (no-op si l'asset n'a pas de LightEffect)
-  - Pas de modif du schema, pas de nouvelle D-XXX.
+    + `syncLightEffect` + `syncLightColor` (no-op si l'asset n'a pas de
+    LightEffect)
+  - La couleur réelle de la lumière (PointLight Three.js) suit en live
+    l'attribut `rgb_color` de l'entité HA. Mutation du
+    `registration.effect.color` dans `useItemLightPool` (clone, pas
+    mutation in-place de l'asset partagé). Pascal picks up au prochain
+    pool reassignment (≤200ms ou mouvement caméra).
+  - D-010 : ajout de `useItemLightPool` au barrel `@pascal-app/viewer`
+    (2 lignes d'export, pas de logique touchée).
 - PHASE 5 fix post-validation : boucle RAF persistente de `HAVisualSystem`
   qui ré-applique l'emissive à chaque frame. Pascal `<Clone>` de drei
   re-instancie les matériaux sur ses re-renders → nos mutations étaient

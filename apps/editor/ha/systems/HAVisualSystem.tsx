@@ -11,7 +11,7 @@ import type { HAEntityBinding, HAEmissiveVisual } from '../schema'
 import { collectHAMappings, reconcileMappings, type MappingMap } from './mapping-registry'
 import { ensureCloned, resolveTargets } from './target-resolver'
 import { parseEmissive, applyEmissiveState, type ParsedEmissive } from './emissive-visual'
-import { findToggleControlIndex, syncLightEffect } from './light-effect-sync'
+import { findToggleControlIndex, syncLightColor, syncLightEffect } from './light-effect-sync'
 
 type RegisteredBinding = {
   bindingKey: string
@@ -96,6 +96,7 @@ export function HAVisualSystem() {
           reg.lastHAState = next
           applyVisual(reg, next)
           syncLightEffect(reg.nodeId, reg.toggleIndex, next)
+          syncLightColor(reg.nodeId, haStore.getState().states[binding.entityId])
         },
         { fireImmediately: true },
       )
@@ -228,6 +229,9 @@ export function HAVisualSystem() {
         // so an item can have one without the other (e.g. intensityOn=0
         // for light-only, or an asset without a light effect for glow-only).
         syncLightEffect(reg.nodeId, reg.toggleIndex, reg.lastHAState)
+        // Also sync the light colour to HA's rgb_color attribute when
+        // present, so the Three.js PointLight's photons match the bulb.
+        syncLightColor(reg.nodeId, haStore.getState().states[reg.binding.entityId])
       }
       rafId = requestAnimationFrame(reapplyLoop)
     }

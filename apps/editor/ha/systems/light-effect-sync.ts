@@ -1,6 +1,8 @@
 // apps/editor/ha/systems/light-effect-sync.ts
 import { useInteractive, useScene } from '@pascal-app/core'
 import type { AnyNodeId, ItemNode } from '@pascal-app/core'
+import type { HAState } from '@maison-3d/ha-bridge'
+import { useItemLightPool } from '@pascal-app/viewer'
 
 /**
  * Locate the index of the first `toggle` control on an item's asset
@@ -37,10 +39,64 @@ export function findToggleControlIndex(nodeId: AnyNodeId): number {
  * Called every frame by HAVisualSystem's reapply loop alongside the
  * emissive mutation, so state survives Pascal re-renders the same way.
  */
-export function syncLightEffect(nodeId: AnyNodeId, toggleIndex: number, haState: string | undefined): void {
+export function syncLightEffect(
+  nodeId: AnyNodeId,
+  toggleIndex: number,
+  haState: string | undefined,
+): void {
   if (toggleIndex < 0) return
   const isOn = haState === 'on'
   const current = useInteractive.getState().items[nodeId]?.controlValues?.[toggleIndex]
   if (current === isOn) return // avoid triggering renderers on no-op sets
   useInteractive.getState().setControlValue(nodeId, toggleIndex, isOn)
+}
+
+/** Convert HA's rgb_color tuple [0-255, 0-255, 0-255] to a CSS hex string. */
+function rgbToHex(rgb: [number, number, number]): string {
+  const [r, g, b] = rgb
+  const to = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0')
+  return `#${to(r)}${to(g)}${to(b)}`
+}
+
+/**
+ * Sync the Pascal `LightEffect.color` to the HA entity's `rgb_color`
+ * attribute so the Three.js PointLight emits photons matching the real
+ * bulb's colour. No-op when the asset has no LightEffect registered or
+ * when the entity doesn't expose `rgb_color` (e.g. colour-temp-only
+ * whites).
+ *
+ * Mutates `registration.effect` to a new object (no in-place mutation —
+ * the asset's `interactive.effects[]` is a shared reference and must not
+ * be touched). Pascal's ItemLightSystem reads `reg.effect.color` on its
+ * next pool re-assignment pass (every 200ms, or on camera movement), so
+ * there's a small latency before the scene updates. Acceptable for
+ * lighting changes, which aren't typically split-second-sensitive.
+ */
+export function syncLightColor(nodeId: AnyNodeId, haStateEntry: HAState | undefined): void {
+  if (!haStateEntry || haStateEntry.state !== 'on') return
+  const rgb = haStateEntry.attributes?.rgb_color as [number, number, number] | undefined
+  if (!Array.isArray(rgb) || rgb.length !== 3) return
+  const hex = rgbToHex(rgb)
+
+  const pool = useItemLightPool.getState()
+  let mutated = false
+  for (const [key, reg] of pool.registrations) {
+    if (reg.nodeId !== nodeId) continue
+    if (reg.effect.color === hex) continue
+    // Replace the effect object with a colour-overridden clone. Do NOT
+    // mutate reg.effect in place — the original is a reference to the
+    // shared asset definition.
+    pool.registrations.set(key, {
+      ...reg,
+      effect: { ...reg.effect, color: hex },
+    })
+    mutated = true
+  }
+  if (mutated) {
+    // Force the store to emit a change so any derived subscribers refresh.
+    // ItemLightSystem reads via getState() so it doesn't strictly need
+    // this, but consistency-wise we don't want the Map reference to feel
+    // stale to other potential consumers.
+    useItemLightPool.setState({ registrations: new Map(pool.registrations) })
+  }
 }
