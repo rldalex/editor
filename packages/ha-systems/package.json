@@ -22,10 +22,8 @@
   },
   "peerDependencies": {
     "react": "^18 || ^19",
-    "react-dom": "^18 || ^19",
     "three": "^0.183",
     "@react-three/fiber": "*",
-    "@react-three/drei": "*",
     "@pascal-app/core": "workspace:*",
     "@pascal-app/viewer": "workspace:*",
     "@maison-3d/ha-bridge": "workspace:*"
