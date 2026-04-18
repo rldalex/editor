@@ -1,0 +1,36 @@
+{
+  "name": "kiosk",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3003",
+    "build": "next build",
+    "start": "next start --port 3003",
+    "check-types": "next typegen && tsc --noEmit",
+    "lint": "biome lint",
+    "kill": "lsof -ti:3003 | xargs kill -9 2>/dev/null || echo 'No processes found on port 3003'"
+  },
+  "dependencies": {
+    "@maison-3d/ha-bridge": "workspace:*",
+    "@maison-3d/ha-systems": "workspace:*",
+    "@maison-3d/scene-bundle": "workspace:*",
+    "@pascal-app/core": "*",
+    "@pascal-app/viewer": "*",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "next": "16.2.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "three": "^0.183.1",
+    "zustand": "^5"
+  },
+  "devDependencies": {
+    "@pascal/typescript-config": "*",
+    "@types/node": "^22.19.12",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@types/three": "^0.183.0",
+    "typescript": "5.9.3"
+  }
+}
