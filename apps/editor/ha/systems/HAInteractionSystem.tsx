@@ -184,11 +184,18 @@ export function HAInteractionSystem() {
     const onClick = (e: ItemEvent) => {
       const records = actionRegistry.get(e.node.id)
       if (!records) return
+      let fired = false
       for (const rec of records) {
         if (rec.validTap && rec.binding.tapAction) {
           fireAction(e.node.id, rec.binding, 'tap')
+          fired = true
         }
       }
+      // If we handled the tap, swallow the event so Pascal's selection
+      // manager doesn't re-target the camera or jolt the view. Items
+      // mapped to HA are meant to behave as buttons in preview/kiosk
+      // mode; to edit their mapping, open them via the Scene sidebar.
+      if (fired) e.stopPropagation()
     }
 
     emitter.on('item:pointerdown', onPointerDown)
