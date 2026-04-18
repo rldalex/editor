@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { collectHAMappings, reconcileMappings } from './mapping-registry'
-import type { HAEntityBinding } from '../schema'
+import type { HAEntityBinding } from './schema'
 
 const makeItem = (id: string, bindings?: HAEntityBinding[]): any => ({
   id, type: 'item', object: 'node', parentId: null, position: [0,0,0], rotation: 0,

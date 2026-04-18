@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
 import { TOGGLE_DOMAINS, validateAction } from './action-handlers'
-import type { HAEntityBinding } from '../schema'
+import type { HAEntityBinding } from './schema'
 
 const binding = (overrides: Partial<HAEntityBinding> = {}): HAEntityBinding => ({
   entityId: 'light.salon',

@@ -15,6 +15,7 @@ export type {
   HAToggleAction,
   HACallServiceAction,
   HAPopupAction,
+  HAPopupType,
   HANavigateAction,
   HANoneAction,
 } from './schema'

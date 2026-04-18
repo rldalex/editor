@@ -1,4 +1,3 @@
-// apps/editor/ha/systems/HAInteractionSystem.tsx
 'use client'
 
 import { useEffect } from 'react'
