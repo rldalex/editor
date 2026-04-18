@@ -1,5 +1,9 @@
 'use client'
 
+import { Clock } from '../components/overlays/Clock'
+import { ConfigButton } from '../components/overlays/ConfigButton'
+import { HAStatusBadge } from '../components/overlays/HAStatusBadge'
+import { HouseName } from '../components/overlays/HouseName'
 import { ResetCameraButton } from '../components/overlays/ResetCameraButton'
 import { KioskViewer } from '../components/viewer/KioskViewer'
 import { HAConfigStep } from '../components/wizard/HAConfigStep'
@@ -14,7 +18,11 @@ export default function KioskRoot() {
   return (
     <>
       <KioskViewer />
+      <Clock />
+      <HouseName />
+      <HAStatusBadge />
       <ResetCameraButton />
+      <ConfigButton />
     </>
   )
 }
