@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+### 2026-04-18 — feat (PHASE 5 + 6)
+
+- PHASE 5 : `HAVisualSystem` — état HA live → `mesh.material.emissive` en
+  temps réel. Subscribe Zustand par binding (pas de RAF continu),
+  coalescing `invalidate()` via `queueMicrotask`, pending queue + polling
+  500ms + abandon 30s pour rattraper le cas GLB pas chargé au mount,
+  `reconcileMappings` pour réagir aux édits du panel sans remount.
+  Clé de binding = `${nodeId}::${kind}::${entityId}` (supporte plusieurs
+  bindings emissive par node).
+  - `apps/editor/ha/systems/animation-manager.ts` : singleton RAF
+    on/off avec cancel+replace (5 tests bun:test)
+  - `apps/editor/ha/systems/mapping-registry.ts` : collect + reconcile
+    partagés entre les 2 systems (8 tests bun:test)
+  - `apps/editor/ha/systems/target-resolver.ts` : regex
+    `/glow\|emissive\|_emit$/i` + fallback Group, clone matériau
+    mesh-level pour isoler de `baseMaterial` / `glassMaterial` Pascal
+  - `apps/editor/ha/systems/emissive-visual.ts` : pre-parse Color +
+    apply + warn-once unavailable/unknown
+  - `apps/editor/ha/systems/HAVisualSystem.tsx` : assemblage
+- PHASE 6 : `HAInteractionSystem` — tap/long-press → actions HA.
+  `toggle` (whitelist domain : light/switch/fan/cover/input_boolean/
+  automation/group), `call_service` (paramétré). `popup`/`navigate`
+  rejetés explicitement au registration avec `console.error` (une
+  seule log par binding invalide, pas par tap). Long-press synthétisé
+  500ms avec cancel sur `move > 8px`, multi-touch safe via
+  `Map<pointerId, PressEntry>`. Feedback scale 1.0→1.05→1.0 en 150ms
+  découplé de la confirmation HA. Debounce 300ms par
+  `(nodeId, entityId, trigger)`.
+  - `apps/editor/ha/systems/action-handlers.ts` : dispatcher +
+    validateAction + shouldFire (9 tests bun:test)
+  - `apps/editor/ha/systems/HAInteractionSystem.tsx` : assemblage
+- `packages/ha-bridge/src/store.ts` : ajout du middleware
+  `subscribeWithSelector` (rétro-compatible, nécessaire aux N-subscribes
+  du HAVisualSystem avec `fireImmediately`).
+- `apps/editor/package.json` : `@types/three` en devDep (pour les `import
+  type { Mesh, Material }` dans `target-resolver.ts`).
+- `apps/editor/ha/EditorWithHA.tsx` : monte `<HAVisualSystem />` +
+  `<HAInteractionSystem />` siblings de `<HABootstrap />`.
+
 ### 2026-04-18 — feat
 
 - PHASE 9 (partielle) : import JSON de scène. Pascal ship déjà

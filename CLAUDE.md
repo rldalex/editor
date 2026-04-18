@@ -5,18 +5,26 @@ connecter a Home Assistant.
 
 ## Statut actuel (2026-04-18)
 
-- PHASE 0 / 1 / 3 / 4 : DONE, mergées sur main (PR #1 + PR #2)
-  - `@maison-3d/ha-bridge` (WebSocket HA, hooks, store, services)
+- PHASE 0 / 1 / 3 / 4 / 5 / 6 : DONE
+  - `@maison-3d/ha-bridge` (WebSocket HA, hooks, store + `subscribeWithSelector`, services)
   - `apps/editor/ha/` : schema + helpers + suggest + HAMappingPanel + HABootstrap + EditorWithHA
   - Panel HA injecté DANS l'ItemPanel Pascal via `createPortal` (sélecteur DOM + MutationObserver)
-- PHASE 9 (partielle) : import JSON ajouté, `feat/scene-io` pushée — **en attente de test
-  par le frère puis merge via PR #3**. Pascal ship déjà l'export, il manquait l'import.
+  - **PHASE 5** : `HAVisualSystem` — émissive temps réel sans RAF continu, subscribe Zustand
+    par binding, pending queue + abandon 30s, reconcile sur édit du panel
+  - **PHASE 6** : `HAInteractionSystem` — tap/long-press → toggle / call_service, multi-touch
+    safe, feedback scale 150ms découplé de la confirmation HA
+  - Spec + plan : `docs/superpowers/specs/2026-04-18-ha-visual-interaction-systems-design.md`
+    et `docs/superpowers/plans/2026-04-18-ha-visual-interaction-systems.md`
+  - Branche en cours : `feat/ha-phase-5-6` (à merger après validation manuelle end-to-end)
+- PHASE 9 (partielle) : import JSON sur `feat/scene-io` — en attente de test par le frère
 - POC `/ha-test` validé live : 2107 entités HA + toggles OK
 - Collaborateur : `ttotttur` (frère) ajouté avec write access
 - MCP `agentation` enregistré localement pour feedback visuel direct depuis l'app
 - Prochaines étapes :
-  - Soit PHASE 5 (`HAVisualSystem` — émissive temps réel sur les meshes mappés)
-  - Soit PHASE 6 (interactions tap → toggle HA)
+  - Validation manuelle PHASE 5/6 contre HA live (7 scénarios cf plan Task 11)
+  - PHASE 5.1 : `cover` visual (volets animés) + `sourceAttribute: 'brightness'` pour les
+    dimmers (extension rétro-compat du schema)
+  - PHASE 7 : `popup` actions (brightness slider, climate setpoint) + catalogue GLB
   - PHASE 2 (catalogue GLB custom) reste reportée (priorité 4 du BRIEF)
 
 ## Commandes essentielles (heritees de Pascal)
