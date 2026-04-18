@@ -1,5 +1,6 @@
 'use client'
 
+import { ResetCameraButton } from '../components/overlays/ResetCameraButton'
 import { KioskViewer } from '../components/viewer/KioskViewer'
 import { HAConfigStep } from '../components/wizard/HAConfigStep'
 import { SceneLoadStep } from '../components/wizard/SceneLoadStep'
@@ -10,5 +11,10 @@ export default function KioskRoot() {
 
   if (step === 'ha-config') return <HAConfigStep />
   if (step === 'scene-load') return <SceneLoadStep />
-  return <KioskViewer />
+  return (
+    <>
+      <KioskViewer />
+      <ResetCameraButton />
+    </>
+  )
 }
