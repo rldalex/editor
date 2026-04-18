@@ -20,7 +20,7 @@ import { MathUtils } from 'three'
 import { positionLocal, smoothstep, time } from 'three/tsl'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { useNodeEvents } from '../../../hooks/use-node-events'
-import { resolveCdnUrl } from '../../../lib/asset-url'
+import { useResolvedAssetUrl } from '../../../hooks/use-resolved-asset-url'
 import { useItemLightPool } from '../../../store/use-item-light-pool'
 import { ErrorBoundary } from '../../error-boundary'
 import { NodeRenderer } from '../node-renderer'
@@ -90,7 +90,13 @@ const multiplyScales = (
 ): [number, number, number] => [a[0] * b[0], a[1] * b[1], a[2] * b[2]]
 
 const ModelRenderer = ({ node }: { node: ItemNode }) => {
-  const { scene, nodes, animations } = useGLTF(resolveCdnUrl(node.asset.src) || '')
+  const resolvedSrc = useResolvedAssetUrl(node.asset.src)
+  if (!resolvedSrc) return null
+  return <ModelRendererInner node={node} src={resolvedSrc} />
+}
+
+const ModelRendererInner = ({ node, src }: { node: ItemNode; src: string }) => {
+  const { scene, nodes, animations } = useGLTF(src)
   const ref = useRef<Group>(null!)
   const { actions } = useAnimations(animations, ref)
   // Freeze the interactive definition at mount — asset schemas don't change at runtime

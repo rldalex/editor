@@ -70,11 +70,13 @@ apps/editor/glb-catalog/                 # NOUVEAU adapter côté app
 ├── EditItemModal.tsx                    # modal d'édition (rename, category, domain, delete)
 ├── UploadZone.tsx                       # drag-drop + file picker + progress
 ├── to-asset-input.ts                    # GLBAsset → AssetInput (shape Pascal)
-├── GLBCatalogBootstrap.tsx              # scan useScene + hydrate blob URLs depuis IndexedDB
-├── asset-src-resolver.ts                # Map<id, blobUrl> ref-counted + getResolvedSrc()
-├── renderers/
-│   └── ItemRendererWrapper.tsx          # wrapper Pascal ItemRenderer qui resolve glb-catalog://
 └── index.ts
+
+# PATCH PASCAL (voir DECISIONS.md D-011 — "bug fix align ItemRenderer w/ asset:// pattern")
+packages/viewer/src/hooks/use-resolved-asset-url.ts   # NOUVEAU hook (~30 lignes)
+packages/viewer/src/components/renderers/item/item-renderer.tsx  # PATCH
+  # — swap import resolveCdnUrl → useResolvedAssetUrl
+  # — split ModelRenderer / ModelRendererInner (rules-of-hooks)
 
 apps/editor/app/page.tsx                 # EXTENDED : ajout de l'onglet { id: 'catalog', component: GLBCatalogPanel }
 
@@ -111,21 +113,18 @@ export type HADomainHint =
   | 'light' | 'switch' | 'cover' | 'fan' | 'climate' | 'sensor' | null
 
 export interface GLBAsset {
-  id: string                       // nanoid 16 chars
+  id: string                       // nanoid 16 chars (notre PK metadata)
   builtin: boolean                 // true = seed read-only ; false = user upload
   name: string                     // user-editable ; défaut = filename sans extension
   category: Category               // auto-detected, user-editable
   suggestedHADomain: HADomainHint  // auto-detected, user-editable
   filename: string                 // original drop filename (immutable)
   meshNames: string[]              // extracted at upload, used for HA entity suggestion later
+  pascalAssetUrl: string           // `asset://<uuid>` retourné par Pascal saveAsset() — le GLB blob
+                                   //   vit dans l'IndexedDB de Pascal (idb-keyval), pas le nôtre
   createdAt: number                // Date.now()
   updatedAt: number
-  // Blob references via separate dexie tables (voir §5) pour perfs large files
-}
-
-export interface GLBAssetWithBlobs extends GLBAsset {
-  glbBlob: Blob                    // le GLB brut
-  thumbnailBlob: Blob              // WebP 256×256 (rendu stocké 512×512 pour HiDPI)
+  // thumbnailBlob stocké dans notre dexie séparément (voir §5)
 }
 ```
 
@@ -133,16 +132,36 @@ export interface GLBAssetWithBlobs extends GLBAsset {
 
 ```ts
 export interface CatalogItem extends GLBAsset {
-  blobUrl: string                  // URL.createObjectURL du glbBlob OU URL statique pour seeds
-  thumbnailUrl: string             // idem pour thumb
+  thumbnailUrl: string             // URL.createObjectURL du thumb blob OU URL statique pour seeds
+  // pascalAssetUrl est déjà dans GLBAsset — pas besoin de résoudre côté UI,
+  // c'est Pascal qui le fait via useResolvedAssetUrl (voir §11.4)
 }
 ```
 
-`builtin: true` items ont `blobUrl = '/items/catalog-seed/light-ceiling.glb'` (URL relative servie depuis `public/`) et `thumbnailUrl = '/items/catalog-seed/light-ceiling.thumb.webp'`. Pas de `URL.createObjectURL`, pas d'entrée IndexedDB.
+`builtin: true` items : `pascalAssetUrl = '/items/catalog-seed/light-ceiling.glb'` (URL relative servie depuis `public/`) et `thumbnailUrl = '/items/catalog-seed/light-ceiling.thumb.webp'`. Pas de `saveAsset`, pas d'entrée dexie. Pascal's `resolveAssetUrl` (via le nouveau hook `useResolvedAssetUrl`) ajoute le préfixe CDN automatiquement.
 
 ---
 
-## 5. Storage (IndexedDB via dexie)
+## 5. Storage
+
+**Design simplifié après spike** : on réutilise l'infrastructure `asset://` de Pascal pour les GLB blobs. Notre dexie ne stocke que **metadata + thumbnails**.
+
+### 5.1 Pascal's IndexedDB (`idb-keyval`, via `@pascal-app/core`) — GLB blobs
+
+```ts
+import { saveAsset, loadAssetUrl } from '@pascal-app/core'
+
+// Upload
+const pascalAssetUrl = await saveAsset(file)  // → "asset://<uuid>"
+// Pascal stocke le File dans son IDB sous la clé `asset_data:<uuid>`
+
+// Résolution au render (géré automatiquement par ItemRenderer patché)
+// via useResolvedAssetUrl(node.asset.src)
+```
+
+Pas de limite taille explicite côté Pascal ; la limite vient du quota IndexedDB browser (~50MB par défaut Chrome, auto-prompt si dépassé).
+
+### 5.2 Notre dexie (`@maison-3d/glb-catalog`) — metadata + thumbnails
 
 ```ts
 // packages/glb-catalog/src/storage/indexeddb.ts
@@ -150,23 +169,24 @@ import Dexie, { type EntityTable } from 'dexie'
 
 class CatalogDB extends Dexie {
   assets!: EntityTable<GLBAsset, 'id'>
-  blobs!: EntityTable<{ id: string; glb: Blob; thumb: Blob }, 'id'>
+  thumbnails!: EntityTable<{ id: string; thumb: Blob }, 'id'>
 
   constructor() {
     super('maison3d-glb-catalog')
     this.version(1).stores({
-      assets: 'id, category, createdAt',   // indexes
-      blobs: 'id',                         // id = même que assets (FK)
+      assets: 'id, category, createdAt, pascalAssetUrl',  // indexes
+      thumbnails: 'id',                                    // id = FK vers assets
     })
   }
 }
 ```
 
-**Rationale deux tables** :
-- `assets` reste léger (metadata only) → scans rapides pour list + filter
-- `blobs` lazy-loaded uniquement au placement ou au preview (évite de pump ~50MB en RAM au boot)
+**Rationale split de stockage** :
+- **Metadata → notre dexie** (queryable par index `category`, `createdAt`, `pascalAssetUrl`)
+- **Thumbnails → notre dexie** (petit, ~15-25 KB chacun, Pascal ne s'en soucie pas)
+- **GLB blobs → Pascal's idb-keyval** via `saveAsset()` (réutilise l'infrastructure existante — pas de duplication, pas d'invention de scheme)
 
-**Seeds** : pas en IndexedDB. Servis depuis `public/items/catalog-seed/` via URLs statiques. Mergés virtuellement côté `useCatalog()`. Impossible à supprimer (pas d'entrée DB). Évite double-stockage et re-seed après delete volontaire.
+**Seeds** : pas en dexie. Servis depuis `public/items/catalog-seed/` via URLs statiques. Mergés virtuellement côté `useCatalog()`. Impossible à supprimer (pas d'entrée DB). Évite double-stockage et re-seed après delete volontaire.
 
 ---
 
@@ -193,7 +213,8 @@ export async function uploadGLB(file: File): Promise<GLBAsset>
 // - Parse GLTF header → meshNames
 // - Détecte category + suggestedHADomain via detect/resolve.ts
 // - Rend thumbnail WebGL2 offscreen (spinner pendant ~300ms)
-// - Écrit assets + blobs en IndexedDB
+// - Appelle Pascal's `saveAsset(file)` → récupère `asset://<uuid>`
+// - Écrit metadata (incl. pascalAssetUrl) + thumbnail dans notre dexie
 // - Retourne le GLBAsset stocké
 
 export async function updateGLBMeta(
@@ -206,17 +227,19 @@ export async function replaceThumbnail(id: string, image: File): Promise<void>
 // User override : resize 256×256 WebP, écrase thumb blob. Rejette si builtin.
 
 export async function regenerateThumbnail(id: string): Promise<void>
-// Re-run render auto. Rejette si builtin.
+// Re-run render auto (re-charge le GLB depuis pascalAssetUrl via loadAssetUrl).
+// Rejette si builtin.
 
 export async function deleteGLB(id: string): Promise<void>
-// Rejette si builtin. Pas de cascade scene : les ItemNode Pascal gardent
-// leur reference (asset.src sera un blob URL devenu dangling → Pascal
-// affichera un fallback / nothing). Le check "combien d'items utilisent
-// ce GLB ?" est fait au NIVEAU UI avant confirm dialog (voir §7.3).
-
-// Utility
-export function getBlobUrl(asset: CatalogItem): string
-// URL.createObjectURL du cache interne (ref-counted pour éviter leak)
+// Rejette si builtin.
+// - Supprime metadata + thumbnail de notre dexie
+// - Supprime le blob de Pascal's idb-keyval (clé `asset_data:<uuid>` extraite
+//   de pascalAssetUrl)
+// - Pas de cascade scene : les ItemNode Pascal gardent leur reference
+//   (asset.src === "asset://<uuid>" devenu orphelin). Pascal's ItemRenderer
+//   render un placeholder (useGLTF échoue → ErrorBoundary → BrokenItemFallback).
+//   Le check "combien d'items utilisent ce GLB ?" est fait au NIVEAU UI
+//   avant confirm dialog (voir §7.3).
 ```
 
 ### 6.2 Adapter `apps/editor/glb-catalog/`
@@ -229,11 +252,11 @@ import type { CatalogItem } from '@maison-3d/glb-catalog'
 export function toAssetInput(item: CatalogItem): AssetInput {
   return {
     id: item.id,
-    category: mapToPascalCategory(item.category), // 'light' → 'appliance' etc. — mapping détaillé §11
+    category: 'custom-glb',   // voir §11.3 — isolation du Furnish mode Pascal
     tags: [item.category, item.suggestedHADomain ?? 'unknown'].filter(Boolean),
     name: item.name,
     thumbnail: item.thumbnailUrl,
-    src: item.blobUrl,
+    src: item.pascalAssetUrl,  // "asset://<uuid>" — résolu par ItemRenderer via useResolvedAssetUrl
     scale: [1, 1, 1],
     offset: [0, 0, 0],
     rotation: [0, 0, 0],
@@ -255,7 +278,7 @@ export function toAssetInput(item: CatalogItem): AssetInput {
 4. **Phase "preparing"** (< 50ms) : parse GLTF header offline → extrait `meshNames`
 5. **Phase "detecting"** (< 10ms) : `resolve()` auto-détecte category + domain
 6. **Phase "rendering"** (100-500ms, spinner visible) : WebGL2 offscreen render 512×512 → downsample WebP 256×256
-7. **Phase "storing"** (< 50ms) : dexie put `assets` + `blobs`
+7. **Phase "storing"** (< 100ms) : `saveAsset(file)` Pascal (→ `asset://<uuid>`) + dexie put metadata + thumbnail
 8. Tile apparaît dans la grille, focus dessus, badge `Nouveau`
 
 Si erreur (ex: fichier corrompu, WebGL2 unsupported) : toast inline dans la zone drop, pas de persistence.
@@ -286,12 +309,12 @@ Si erreur (ex: fichier corrompu, WebGL2 unsupported) : toast inline dans la zone
 ### 7.4 Placement dans la scène
 
 1. User clique une tile dans le panel Catalogue (pas le bouton edit)
-2. Handler : `useEditor.getState().setSelectedItem(toAssetInput(item))`
-3. User bascule en mode Furnish (ou est déjà dedans)
-4. Pascal's placement-coordinator prend le relais : ghost preview sur grid, clic dans la scène pour poser
-5. `ItemNode` créé avec `asset.src = "glb-catalog://<id>"` (scheme custom, **pas** un blob URL) + `metadata.glbSource = <id>` (source de vérité unique pour le link catalog↔scène). Voir §11.4 pour la résolution au render.
+2. Handler : `useEditor.getState().setSelectedItem(toAssetInput(item))` **+** `useEditor.getState().setPhase('furnish')` / `setMode('build')` si pas déjà dedans (le setSelectedItem seul ne switch pas automatiquement, vérifié dans le spike)
+3. `ItemTool` (Pascal) devient actif : ghost preview sur grid, clic dans la scène pour poser
+4. `ItemNode` créé avec `asset.src = "asset://<uuid>"` (retourné par `saveAsset` au moment de l'upload) + `metadata.glbSource = <our glb.id>` (link catalog↔scène pour le check delete)
+5. Pascal render l'item via `ItemRenderer` patché → `useResolvedAssetUrl` → blob URL → `useGLTF` → affichage. Cross-session : reload déclenche la même résolution depuis idb-keyval.
 
-**Rationale `metadata.glbSource`** plutôt que `asset.id` : `asset.id` reste natif Pascal (ex: `'tesla'` pour les built-ins). `metadata.glbSource` est notre champ custom cohérent avec le pattern existant `metadata.ha` de PHASE 5/6. Le check delete §7.3 scan `node.metadata.glbSource === id`, **pas** `asset.id`.
+**Rationale `metadata.glbSource`** : notre nanoid est différent du UUID Pascal. `asset.id` = `item.id` (notre nanoid), `asset.src` = `asset://<uuid-pascal>`. `metadata.glbSource` duplique `item.id` dans `metadata` pour être cohérent avec le pattern `metadata.ha` de PHASE 5/6 et permettre un scan rapide de la scène au delete sans parser `asset.src`.
 
 ---
 
@@ -542,9 +565,11 @@ Au clic sur une tile :
 ```tsx
 // GLBCatalogPanel.tsx
 const handleTileClick = (item: CatalogItem) => {
-  useEditor.getState().setSelectedItem(toAssetInput(item))
-  // Optionnel : switcher en mode Furnish si pas déjà dedans
-  // (à vérifier si Pascal le fait automatiquement au setSelectedItem)
+  const editor = useEditor.getState()
+  editor.setSelectedItem(toAssetInput(item))
+  // Spike §11.4 : setSelectedItem ne switch pas en Furnish, il faut le faire manuel
+  if (editor.phase !== 'furnish') editor.setPhase('furnish')
+  if (editor.mode !== 'build') editor.setMode('build')
 }
 ```
 
@@ -562,100 +587,86 @@ Conséquence voulue : les GLB custom sont **invisibles depuis le Furnish mode Pa
 
 Notre vraie category reste visible via `tags: [item.category, item.suggestedHADomain ?? 'unknown']`, récupérable côté runtime si besoin.
 
-### 11.4 Scene hydration (blob URLs volatiles) — **in-scope PHASE 2**
+### 11.4 Scene hydration — **résolu via patch ItemRenderer (D-011)**
 
-**Contrainte** : `URL.createObjectURL` produit un blob URL vivant **uniquement dans la session courante**. Si la scène Pascal est persistée avec `asset.src = "blob:http://..."`, le reload → URL dangling → Pascal tente de fetch une URL invalide → crash ou placeholder.
+Le spike §spike-phase-2 a révélé que Pascal possède déjà une infrastructure `asset://` complète via `saveAsset` + `loadAssetUrl` (`@pascal-app/core`). `ScanRenderer` et `GuideRenderer` utilisent déjà le pattern via `useAssetUrl`. **`ItemRenderer` était l'exception** — il utilisait le sync `resolveCdnUrl` qui ne gère pas `asset://`.
 
-**Solution retenue** : scheme custom `glb-catalog://<id>` stocké en DB, résolu au render via wrapper.
+#### 11.4.1 Patch ItemRenderer (voir DECISIONS.md D-011)
 
-#### 11.4.1 Au placement (write path)
+Deux fichiers modifiés dans `packages/viewer/` (bug fix, candidat upstream) :
 
-```ts
-toAssetInput(item).src = `glb-catalog://${item.id}`
-// + metadata.glbSource = item.id sur le ItemNode au moment de createNode
-```
-
-La chaîne `glb-catalog://xyz` passe la validation zod `asset.src: z.string()` (c'est une string valide, juste un scheme non standard). Pascal persiste tel quel.
-
-#### 11.4.2 Au render (read path) — `ItemRendererWrapper`
-
+**A** — Nouveau hook `packages/viewer/src/hooks/use-resolved-asset-url.ts` :
 ```tsx
-// apps/editor/glb-catalog/renderers/ItemRendererWrapper.tsx
-import { useAssetSrc } from '../asset-src-resolver'
-
-export function ItemRendererWrapper({ node }: { node: ItemNode }) {
-  const resolvedSrc = useAssetSrc(node.asset.src)  // resolve "glb-catalog://xyz" → "blob:http://.../abc"
-  if (!resolvedSrc) return null  // pas encore hydraté, ou id inconnu → placeholder
-
-  const patchedNode = { ...node, asset: { ...node.asset, src: resolvedSrc } }
-  return <PascalItemRenderer node={patchedNode} />
-}
-```
-
-Le wrapper est inséré dans le render pipeline Pascal via un mécanisme à investiguer — deux options :
-- **Option 1** : Pascal expose un hook / registry type `registerItemRenderer(filter, component)` → on register notre wrapper pour les nodes dont `asset.src.startsWith('glb-catalog://')`. **À confirmer** en PHASE 2 impl.
-- **Option 2** : si Pascal n'a pas d'API d'extension, on wrap le `<Viewer>` Pascal dans un component qui intercepte via React context ou via un override du ItemRenderer global. Plus invasif, à éviter.
-
-Si aucune des deux options n'est propre, fallback : **patcher `asset.src` au moment du load via un `applySceneGraphToEditor` adapter** (notre code, pas Pascal). Pascal expose déjà `applySceneGraphToEditor` dans `@pascal-app/editor` (vu dans `index.tsx:22`). On wrappe ça pour résoudre les `glb-catalog://` URIs avant injection dans `useScene`.
-
-#### 11.4.3 Bootstrap — `<GLBCatalogBootstrap />`
-
-```tsx
-// apps/editor/glb-catalog/GLBCatalogBootstrap.tsx
-export function GLBCatalogBootstrap() {
+export function useResolvedAssetUrl(url: string): string | null {
+  const [resolved, setResolved] = useState<string | null>(null)
   useEffect(() => {
-    const unsub = useScene.subscribe((state) => {
-      const neededIds = new Set<string>()
-      for (const node of Object.values(state.nodes)) {
-        const gsrc = node.metadata?.glbSource as string | undefined
-        if (gsrc) neededIds.add(gsrc)
-      }
-      hydrateBlobUrls(neededIds)  // populate asset-src-resolver cache
-    })
-    return unsub
-  }, [])
-  return null
+    let cancelled = false
+    setResolved(null)
+    resolveAssetUrl(url).then(
+      (r) => !cancelled && setResolved(r),
+      (err) => { if (!cancelled) { console.warn(...); setResolved(null) } },
+    )
+    return () => { cancelled = true }
+  }, [url])
+  return resolved
 }
 ```
 
-`hydrateBlobUrls(ids)` :
-1. Fetch manquants depuis dexie
-2. `URL.createObjectURL(blob)` pour chacun, stocke dans `Map<id, url>`
-3. Ref-count : incr à chaque ItemNode qui référence, decr au unmount, `revokeObjectURL` quand count=0
-4. Pour les `builtin: true` (seeds), pas de lookup IndexedDB → URL statique `/items/catalog-seed/...`
+Composite : `resolveAssetUrl` gère `asset://` (via `loadAssetUrl`), `http(s)://` (as-is), et les paths (prefix CDN).
 
-Monté dans `EditorWithHA` en sibling de `<HABootstrap />`.
+**B** — `item-renderer.tsx` : swap import + split `ModelRenderer` en 2 composants :
+```tsx
+const ModelRenderer = ({ node }) => {
+  const resolvedSrc = useResolvedAssetUrl(node.asset.src)
+  if (!resolvedSrc) return null  // rules-of-hooks: guard BEFORE useGLTF + hooks
+  return <ModelRendererInner node={node} src={resolvedSrc} />
+}
 
-#### 11.4.4 Décision sur l'approche de wrapping renderer
+const ModelRendererInner = ({ node, src }) => {
+  const { scene, nodes, animations } = useGLTF(src)  // tous les autres hooks ici
+  // ... (logique existante)
+}
+```
 
-Le spec acte : **approche wrapper `applySceneGraphToEditor` adapter** (solution sans investigation Pascal incertaine). Flow :
-1. Au boot, notre code appelle `applySceneGraphToEditor(sceneGraphAvecResolvedSrc)`
-2. Pour chaque node à src `glb-catalog://xyz`, on remplace par le blob URL resolved
-3. Pascal ne voit que des URLs valides, pas de modification de son render path
+#### 11.4.2 Flow end-to-end résultant
 
-Au placement live (user clic tile), le blob URL est déjà vivant (hydrateBlobUrls l'a créé) → `setSelectedItem` passe le blob URL directement, et `metadata.glbSource` garde l'ID pour le check delete.
+1. **Upload** : `saveAsset(file)` → `asset://<uuid>` stocké dans idb-keyval Pascal + notre metadata + thumbnail dans notre dexie
+2. **Placement** : `asset.src = 'asset://<uuid>'` + `metadata.glbSource = <our-nanoid>`
+3. **Render session courante** : `ItemRenderer` → `useResolvedAssetUrl('asset://<uuid>')` → blob URL via `loadAssetUrl` (cached dans `urlCache` Pascal) → `useGLTF(blobUrl)` → affichage
+4. **Reload** : useScene hydrate depuis localStorage/JSON → `asset.src === 'asset://<uuid>'` persiste → même résolution, même affichage. **Cross-session reload garanti.**
 
-**Seul risque résiduel** : si l'user drag un item déjà en scène et que `commit` re-crée le node (voir `use-draft-node.ts` create mode), le node re-créé doit préserver `metadata.glbSource`. À vérifier que Pascal propage `metadata` intactement.
+#### 11.4.3 Compat built-ins Pascal
+
+`useResolvedAssetUrl` gère aussi `/items/tesla/model.glb` en préfixant `ASSETS_CDN_URL`. Smoke test validé : après patch, Tesla + pillar rendent normalement. Régression zero.
+
+#### 11.4.4 Risque résiduel : metadata propagation au commit draft
+
+Si `use-draft-node.ts commit` path delete+recreate le node, `metadata.glbSource` doit être préservé. À tester en fin d'impl via un cas "place item → move → release" → vérifier `metadata.glbSource` toujours présent. Si Pascal perd metadata au re-create, fix : stocker aussi l'info dans `asset.tags` (redondance) ou passer via `create()` props.
 
 ---
 
 ## 12. Modifications externes
 
-- `apps/editor/app/page.tsx` : +1 entry dans `SIDEBAR_TABS` (déjà modifié récemment pour `sitePanelProps`)
-- `apps/editor/ha/suggest.ts` : ajouter `suggestCategoryAndDomain()` (extension additive, pas de refactor)
+- `apps/editor/app/page.tsx` : +1 entry dans `SIDEBAR_TABS`
+- `apps/editor/ha/suggest.ts` : ajouter `suggestCategoryAndDomain()` (extension additive)
 - `apps/editor/package.json` : +1 dep `@maison-3d/glb-catalog` (workspace)
-- **Zéro** modification `packages/core`, `packages/viewer`, `packages/editor`
+- `packages/viewer/src/hooks/use-resolved-asset-url.ts` : **nouveau** (~30 lignes)
+- `packages/viewer/src/components/renderers/item/item-renderer.tsx` : **patch** (swap import + split ModelRenderer/ModelRendererInner, rules-of-hooks)
+- `DECISIONS.md` : nouvelle entrée D-011 "Align ItemRenderer with Pascal's own asset:// pattern"
+- **Zéro** modification `packages/core`, `packages/editor`
 
 ---
 
 ## 13. Risks & open questions
 
-1. **Mode Furnish automatique au `setSelectedItem`** — à vérifier en implémentation : est-ce que Pascal bascule tout seul ou faut-il `useEditor.setMode('furnish')` manuellement ?
-2. **Propagation `metadata.glbSource` au re-create du draft node** — voir §11.4.4 dernier paragraphe. À tester sur `use-draft-node.ts` commit path (delete+recreate).
-3. **Mécanisme d'extension du render pipeline Pascal** — §11.4.2 : preferred approach est l'adapter `applySceneGraphToEditor` au boot. Si le flow nécessite aussi une résolution live (ex: scene edits pendant la session), prévoir un wrapper renderer injecté ailleurs. À cadrer en début d'impl.
-4. **OffscreenCanvas + WebGL2 sur iOS Safari** — pas bloquant puisque cible = Chrome desktop + Fully Kiosk Android. Fallback detached canvas suffit pour le dev Safari occasionnel.
-5. **Limite IndexedDB** — ~50MB default sur Chrome sans prompt. 200MB/GLB max × ~100 items = hit quota fast. Mitigation : v1 pas de check proactif, v2 (PHASE 8+) ajouter métrique "Espace utilisé" dans le panel.
-6. **GLTFLoader deps** — vérifier que `three/examples/jsm/loaders/GLTFLoader.js` est disponible dans le stack actuel (Pascal déjà l'utilise probablement)
+1. ✅ **Résolu par spike** — Pascal a déjà l'infra `asset://`, on réutilise
+2. ✅ **Résolu par spike** — `setSelectedItem` ne switch pas en Furnish tout seul, on appelle explicitement `setPhase('furnish') + setMode('build')` au tile click (§11.2)
+3. **Propagation `metadata.glbSource` au re-create du draft node** — §11.4.4. À tester en fin d'impl (place → move → release).
+4. **Régression Pascal built-ins après patch ItemRenderer** — testé OK au spike (Tesla + pillar rendent normalement). Re-tester après merge PR PHASE 2.
+5. **OffscreenCanvas + WebGL2 sur iOS Safari** — pas bloquant puisque cible = Chrome desktop + Fully Kiosk Android. Fallback detached canvas suffit.
+6. **Limite IndexedDB (Pascal idb-keyval)** — ~50MB default Chrome sans prompt. 200MB/GLB × ~100 items = hit quota fast. Mitigation : v1 pas de check proactif, v2 ajouter métrique "Espace utilisé".
+7. **`urlCache` Pascal + cache drei `useGLTF`** — pas d'éviction explicite. Blob URLs retenus jusqu'au reload. Acceptable v1, documenter.
+8. **GLTFLoader deps** — Pascal utilise déjà `@react-three/drei/core/Gltf` (`useGLTF`), disponible. Pour notre thumbnail renderer offscreen, import via `three/examples/jsm/loaders/GLTFLoader.js`.
 
 ---
 
@@ -666,8 +677,9 @@ Au placement live (user clic tile), le blob URL est déjà vivant (hydrateBlobUr
 - [ ] Au premier boot, 3 seeds s'affichent avec **leurs thumbnails chargées** (pas de placeholder cassé) depuis `/items/catalog-seed/*.thumb.webp`
 - [ ] Drag-drop d'un `.glb` sur le panel → tile apparaît en < 1s avec thumbnail rendered, category + domain auto-détectés
 - [ ] Clic sur une tile → `useEditor.selectedItem` set → Pascal en mode Furnish place l'item en scène
-- [ ] Item placé en scène est rendu correctement (GLB chargé depuis blob URL resolved par `ItemRendererWrapper` / adapter `applySceneGraphToEditor`)
+- [ ] Item placé en scène est rendu correctement (GLB chargé depuis `asset://<uuid>` via `ItemRenderer` patché → `useResolvedAssetUrl` → blob URL)
 - [ ] **Reload test** : je place 3 items (1 seed, 2 custom), je reload la page → les 3 items réapparaissent au même endroit, rendus correctement (pas de placeholder dangling). Scène persiste cross-session.
+- [ ] **Régression Pascal built-ins** : je place une Tesla + une pillar + un item custom, tous les 3 rendent correctement. CDN path Pascal non-cassé par le patch `useResolvedAssetUrl`.
 - [ ] Edit modal permet rename, change category, change HA domain, supprimer (avec confirm + warn usage)
 - [ ] Supprimer un GLB encore utilisé en scène → les `ItemNode` restent mais le rendu tombe sur placeholder (pas de crash)
 - [ ] Les 3 seeds ne sont pas supprimables (bouton grisé)
