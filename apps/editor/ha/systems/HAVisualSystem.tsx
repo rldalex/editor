@@ -11,6 +11,7 @@ import type { HAEntityBinding, HAEmissiveVisual } from '../schema'
 import { collectHAMappings, reconcileMappings, type MappingMap } from './mapping-registry'
 import { ensureCloned, resolveTargets } from './target-resolver'
 import { parseEmissive, applyEmissiveState, type ParsedEmissive } from './emissive-visual'
+import { findToggleControlIndex, syncLightEffect } from './light-effect-sync'
 
 type RegisteredBinding = {
   bindingKey: string
@@ -20,6 +21,10 @@ type RegisteredBinding = {
   targets: Mesh[] | null
   /** Last HA state observed for this binding — driven by the subscribe. */
   lastHAState: string | undefined
+  /** Index of a `kind:'toggle'` control on the asset's interactive spec
+   *  when the asset also declares a `kind:'light'` effect. -1 otherwise.
+   *  Cached at registration so the per-frame reapply loop doesn't rescan. */
+  toggleIndex: number
   unsubHA: () => void
 }
 
@@ -78,6 +83,7 @@ export function HAVisualSystem() {
         parsed: parseEmissive(binding.visual as HAEmissiveVisual),
         targets: null,
         lastHAState: undefined,
+        toggleIndex: findToggleControlIndex(nodeId),
         unsubHA: () => {},
       }
       registered.set(key, reg)
@@ -89,6 +95,7 @@ export function HAVisualSystem() {
         (next) => {
           reg.lastHAState = next
           applyVisual(reg, next)
+          syncLightEffect(reg.nodeId, reg.toggleIndex, next)
         },
         { fireImmediately: true },
       )
@@ -215,6 +222,12 @@ export function HAVisualSystem() {
           for (const mesh of reg.targets!) ensureCloned(mesh)
         }
         applyEmissiveState(reg.binding, reg.parsed, reg.targets!, reg.lastHAState)
+        // Pilot Pascal's real Three.js PointLight (from the asset's
+        // LightEffect) via the interactive toggle control. Emissive makes
+        // the mesh glow; this makes the room actually get lit. Independent
+        // so an item can have one without the other (e.g. intensityOn=0
+        // for light-only, or an asset without a light effect for glow-only).
+        syncLightEffect(reg.nodeId, reg.toggleIndex, reg.lastHAState)
       }
       rafId = requestAnimationFrame(reapplyLoop)
     }

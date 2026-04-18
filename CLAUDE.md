@@ -5,12 +5,16 @@ connecter a Home Assistant.
 
 ## Statut actuel (2026-04-18)
 
-- PHASE 0 / 1 / 3 / 4 / 5 / 6 : DONE
+- PHASE 0 / 1 / 3 / 4 / 5 / 5.1 / 6 : DONE
   - `@maison-3d/ha-bridge` (WebSocket HA, hooks, store + `subscribeWithSelector`, services)
   - `apps/editor/ha/` : schema + helpers + suggest + HAMappingPanel + HABootstrap + EditorWithHA
   - Panel HA injecté DANS l'ItemPanel Pascal via `createPortal` (sélecteur DOM + MutationObserver)
-  - **PHASE 5** : `HAVisualSystem` — émissive temps réel sans RAF continu, subscribe Zustand
-    par binding, pending queue + abandon 30s, reconcile sur édit du panel
+  - **PHASE 5** : `HAVisualSystem` — émissive temps réel, RAF reapply pour
+    survivre aux re-renders Pascal (`<Clone>` drei swap les matériaux),
+    `material.version++` pour recompiler le NodeMaterial shader WebGPU
+  - **PHASE 5.1** : pilotage des `LightEffect` Pascal depuis HA via
+    `useInteractive.setControlValue` — la lampe éclaire vraiment la pièce,
+    pas juste son abat-jour. Indépendant du glow (intensityOn=0 possible).
   - **PHASE 6** : `HAInteractionSystem` — tap/long-press → toggle / call_service, multi-touch
     safe, feedback scale 150ms découplé de la confirmation HA
   - Spec + plan : `docs/superpowers/specs/2026-04-18-ha-visual-interaction-systems-design.md`

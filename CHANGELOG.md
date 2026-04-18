@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### 2026-04-18 — feat (PHASE 5 + 5.1 + 6)
+
+- PHASE 5.1 : `HAVisualSystem` pilote aussi les `LightEffect` Pascal
+  existants. Quand l'asset d'un item mappé déclare un `interactive.effects`
+  de `kind:'light'`, l'état HA `on/off` flippe le control `kind:'toggle'`
+  correspondant via `useInteractive.setControlValue`, ce qui active la
+  vraie `THREE.PointLight` de Pascal (la pièce est réellement éclairée,
+  pas juste l'objet qui glow). Les deux sont indépendants : `intensityOn:0`
+  donne light-only sans glow, un asset sans LightEffect donne glow-only.
+  - `apps/editor/ha/systems/light-effect-sync.ts` : `findToggleControlIndex`
+    + `syncLightEffect` (no-op si l'asset n'a pas de LightEffect)
+  - Pas de modif du schema, pas de nouvelle D-XXX.
+- PHASE 5 fix post-validation : boucle RAF persistente de `HAVisualSystem`
+  qui ré-applique l'emissive à chaque frame. Pascal `<Clone>` de drei
+  re-instancie les matériaux sur ses re-renders → nos mutations étaient
+  silencieusement écrasées. `target-resolver.CLONED_FLAG` permet de
+  détecter les swaps et re-cloner à la volée.
+- PHASE 5 fix post-validation : bump `material.version` pour forcer le
+  recompile du shader `MeshStandardNodeMaterial` (WebGPU/TSL). Sans ça la
+  branche émissive était optimisée out au premier compile et les mutations
+  `emissive.copy()` n'avaient aucun effet.
+- PHASE 5 fix post-validation : retrait du guard `if (next === prev) return`
+  dans le subscribe haStore — avec `fireImmediately:true`, Zustand passe
+  `prev === next` au premier call, ce qui skippait l'apply initial.
+
 ### 2026-04-18 — feat (PHASE 5 + 6)
 
 - PHASE 5 : `HAVisualSystem` — état HA live → `mesh.material.emissive` en
