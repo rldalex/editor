@@ -125,6 +125,33 @@ Consequence :
   un parser (Zod ou custom) au boundary avant d'ecrire dans le store.
 - Garder cette regle tant que la scene est produite uniquement par notre app.
 
+## D-010 : Ajout de `useItemLightPool` au barrel `@pascal-app/viewer`
+
+Date : 2026-04-18
+
+Modification de `packages/viewer/src/index.ts` (fichier Pascal) pour ajouter
+deux lignes d'export :
+
+```ts
+export { useItemLightPool } from './store/use-item-light-pool'
+export type { LightRegistration } from './store/use-item-light-pool'
+```
+
+Rationale :
+- La PHASE 5.1 (`syncLightColor` dans `apps/editor/ha/systems/light-effect-sync.ts`)
+  a besoin de muter `registration.effect.color` pour faire suivre la couleur
+  RGB HA sur le `THREE.PointLight` du pool Pascal.
+- L'export était un oubli côté Pascal : `useInteractive` est déjà exporté
+  depuis `@pascal-app/core`, `useItemLightPool` est l'analogue côté viewer
+  pour la même raison (API de modif des states runtime).
+
+Consequence :
+- En cas de merge upstream qui réécrit `index.ts`, garder nos deux lignes
+  d'export. Idéalement proposer l'export upstream pour supprimer cette
+  customisation.
+- Aucune modification de logique — juste deux lignes de re-export depuis un
+  fichier interne au package. La surface de conflit est minimale.
+
 ## D-006 : Ecrasement du CLAUDE.md de Pascal
 Date : 2026-04-17
 

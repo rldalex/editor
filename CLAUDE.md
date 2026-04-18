@@ -3,13 +3,33 @@
 Fork perso de github.com/pascalorg/editor pour construire ma maison en 3D et la
 connecter a Home Assistant.
 
-## Statut actuel (2026-04-17)
+## Statut actuel (2026-04-18)
 
-- PHASE 0 (bootstrap) : DONE, sur main (commit 0e887e0, pushé)
-- PHASE 1 (ha-bridge package + POC) : DONE, sur branche feat/ha-bridge
-  (commits da60207, 0d6e2a3) — pas encore mergée dans main
-- POC validé : /ha-test charge 2107 entités HA + toggles fonctionnels
-- Prochaine étape suggérée par BRIEF : PHASE 3-4-5 (mapping HA dans l'éditeur 3D)
+- PHASE 0 / 1 / 3 / 4 / 5 / 5.1 / 6 : DONE
+  - `@maison-3d/ha-bridge` (WebSocket HA, hooks, store + `subscribeWithSelector`, services)
+  - `apps/editor/ha/` : schema + helpers + suggest + HAMappingPanel + HABootstrap + EditorWithHA
+  - Panel HA injecté DANS l'ItemPanel Pascal via `createPortal` (sélecteur DOM + MutationObserver)
+  - **PHASE 5** : `HAVisualSystem` — émissive temps réel, RAF reapply pour
+    survivre aux re-renders Pascal (`<Clone>` drei swap les matériaux),
+    `material.version++` pour recompiler le NodeMaterial shader WebGPU
+  - **PHASE 5.1** : pilotage des `LightEffect` Pascal depuis HA via
+    `useInteractive.setControlValue` — la lampe éclaire vraiment la pièce,
+    pas juste son abat-jour. Indépendant du glow (intensityOn=0 possible).
+  - **PHASE 6** : `HAInteractionSystem` — tap/long-press → toggle / call_service, multi-touch
+    safe, feedback scale 150ms découplé de la confirmation HA
+  - Spec + plan : `docs/superpowers/specs/2026-04-18-ha-visual-interaction-systems-design.md`
+    et `docs/superpowers/plans/2026-04-18-ha-visual-interaction-systems.md`
+  - Branche en cours : `feat/ha-phase-5-6` (à merger après validation manuelle end-to-end)
+- PHASE 9 (partielle) : import JSON sur `feat/scene-io` — en attente de test par le frère
+- POC `/ha-test` validé live : 2107 entités HA + toggles OK
+- Collaborateur : `ttotttur` (frère) ajouté avec write access
+- MCP `agentation` enregistré localement pour feedback visuel direct depuis l'app
+- Prochaines étapes :
+  - Validation manuelle PHASE 5/6 contre HA live (7 scénarios cf plan Task 11)
+  - PHASE 5.1 : `cover` visual (volets animés) + `sourceAttribute: 'brightness'` pour les
+    dimmers (extension rétro-compat du schema)
+  - PHASE 7 : `popup` actions (brightness slider, climate setpoint) + catalogue GLB
+  - PHASE 2 (catalogue GLB custom) reste reportée (priorité 4 du BRIEF)
 
 ## Commandes essentielles (heritees de Pascal)
 
