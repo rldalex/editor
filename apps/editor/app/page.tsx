@@ -2,6 +2,7 @@
 
 import { type SidebarTab, ViewerToolbarLeft, ViewerToolbarRight } from '@pascal-app/editor'
 import { EditorWithHA } from '../ha/EditorWithHA'
+import { GLBCatalogPanel } from '../glb-catalog'
 import { localDeleteAsset, localUploadAsset } from '../uploads/local-upload-handlers'
 
 const SIDEBAR_TABS: (SidebarTab & { component: React.ComponentType })[] = [
@@ -9,6 +10,11 @@ const SIDEBAR_TABS: (SidebarTab & { component: React.ComponentType })[] = [
     id: 'site',
     label: 'Scene',
     component: () => null, // Built-in SitePanel handles this
+  },
+  {
+    id: 'catalog',
+    label: 'Catalogue',
+    component: GLBCatalogPanel,
   },
 ]
 
