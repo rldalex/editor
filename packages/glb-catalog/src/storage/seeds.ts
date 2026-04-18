@@ -1,4 +1,6 @@
 import type { CatalogItem, GLBAsset } from '../schema'
+import { renderThumbnail } from '../thumbnails/render'
+import { dbGetSeedThumbnail, dbPutSeedThumbnail } from './db'
 
 const SEED_DIR = '/items/catalog-seed'
 
@@ -61,4 +63,32 @@ export function mergeWithSeeds(
     thumbnailUrl: thumbnailUrlForAsset(a),
   }))
   return [...builtins, ...custom]
+}
+
+/**
+ * Fetch + render + cache thumbnails for all BUILTIN_SEEDS. Idempotent :
+ * skip seeds déjà en cache. Safe to call multiple times (useCatalog le fait
+ * au mount).
+ *
+ * Retourne une Map<seedId, blobUrl> des thumbnails prêts à afficher.
+ */
+export async function ensureSeedThumbnails(): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  for (const seed of BUILTIN_SEEDS) {
+    let thumb = await dbGetSeedThumbnail(seed.id)
+    if (!thumb) {
+      try {
+        const resp = await fetch(seed.pascalAssetUrl)
+        if (!resp.ok) throw new Error(`seed fetch failed: ${resp.status}`)
+        const glbBlob = await resp.blob()
+        thumb = await renderThumbnail(glbBlob)
+        await dbPutSeedThumbnail(seed.id, thumb)
+      } catch (err) {
+        console.warn(`ensureSeedThumbnails: ${seed.id} failed`, err)
+        continue
+      }
+    }
+    result.set(seed.id, URL.createObjectURL(thumb))
+  }
+  return result
 }

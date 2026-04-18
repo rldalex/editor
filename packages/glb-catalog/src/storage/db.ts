@@ -9,12 +9,14 @@ interface ThumbnailRow {
 class CatalogDB extends Dexie {
   assets!: EntityTable<GLBAsset, 'id'>
   thumbnails!: EntityTable<ThumbnailRow, 'id'>
+  seedThumbnails!: EntityTable<ThumbnailRow, 'id'>
 
   constructor() {
     super('maison3d-glb-catalog')
-    this.version(1).stores({
+    this.version(2).stores({
       assets: 'id, category, createdAt',
       thumbnails: 'id',
+      seedThumbnails: 'id',
     })
   }
 }
@@ -66,4 +68,13 @@ export async function dbDeleteAsset(id: string): Promise<void> {
 export async function dbGetThumbnail(id: string): Promise<Blob | undefined> {
   const row = await getDB().thumbnails.get(id)
   return row?.thumb
+}
+
+export async function dbGetSeedThumbnail(id: string): Promise<Blob | undefined> {
+  const row = await getDB().seedThumbnails.get(id)
+  return row?.thumb
+}
+
+export async function dbPutSeedThumbnail(id: string, thumb: Blob): Promise<void> {
+  await getDB().seedThumbnails.put({ id, thumb })
 }

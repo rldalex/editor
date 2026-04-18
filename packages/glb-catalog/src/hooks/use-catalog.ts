@@ -2,7 +2,7 @@ import { liveQuery } from 'dexie'
 import { useEffect, useMemo, useState } from 'react'
 import type { CatalogItem, Category, GLBAsset } from '../schema'
 import { dbGetThumbnail, getDB } from '../storage/db'
-import { mergeWithSeeds } from '../storage/seeds'
+import { ensureSeedThumbnails, mergeWithSeeds } from '../storage/seeds'
 
 // Blob URL cache : keep URLs alive until deleteGLB explicit revoke or session end.
 // No ref-counting : < 100 items attendus, ~80 KB × N = négligeable.
@@ -30,7 +30,13 @@ export function useCatalog(filter?: { category?: Category }): {
 } {
   const [assets, setAssets] = useState<GLBAsset[]>([])
   const [customThumbs, setCustomThumbs] = useState<Map<string, Blob>>(new Map())
+  const [seedThumbUrls, setSeedThumbUrls] = useState<Map<string, string>>(new Map())
   const [isLoading, setIsLoading] = useState(true)
+
+  // Hydrate seed thumbnails once at mount
+  useEffect(() => {
+    void ensureSeedThumbnails().then((map) => setSeedThumbUrls(map))
+  }, [])
 
   // Subscribe custom assets
   useEffect(() => {
@@ -59,10 +65,16 @@ export function useCatalog(filter?: { category?: Category }): {
       const thumb = customThumbs.get(asset.id)
       return thumb ? getOrCreateThumbUrl(asset.id, thumb) : ''
     })
+    // Override builtin thumbnailUrl avec les URLs dynamiques générées
+    const withSeedThumbs = merged.map((item) =>
+      item.builtin && seedThumbUrls.has(item.id)
+        ? { ...item, thumbnailUrl: seedThumbUrls.get(item.id)! }
+        : item,
+    )
     return filter?.category
-      ? merged.filter((i) => i.category === filter.category)
-      : merged
-  }, [assets, customThumbs, filter?.category])
+      ? withSeedThumbs.filter((i) => i.category === filter.category)
+      : withSeedThumbs
+  }, [assets, customThumbs, seedThumbUrls, filter?.category])
 
   return { items, isLoading }
 }

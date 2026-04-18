@@ -2,6 +2,7 @@ import { loadAssetUrl, saveAsset } from '@pascal-app/core'
 import { nanoid } from 'nanoid'
 import { type CategoryResolver, resolveAssetMeta } from './detect/resolve'
 import { extractMeshNames } from './detect/gltf-meshes'
+import { revokeThumbUrl } from './hooks/use-catalog'
 import { type GLBAsset } from './schema'
 import {
   dbDeleteAsset,
@@ -101,6 +102,7 @@ export async function deleteGLB(id: string): Promise<void> {
   const { del } = await import('idb-keyval')
   await del(`asset_data:${uuid}`)
   await dbDeleteAsset(id)
+  revokeThumbUrl(id)
 }
 
 export async function listAssets(): Promise<GLBAsset[]> {
