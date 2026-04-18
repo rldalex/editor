@@ -713,10 +713,10 @@ describe('mergeWithSeeds', () => {
     expect(merged[3].id).toBe('custom-1')
     expect(merged[3].thumbnailUrl).toBe('/thumb/custom-1.webp')
   })
-  test('builtin thumbnailUrl points to /items/catalog-seed', () => {
+  test('builtin thumbnailUrl is empty (overridden at runtime by useCatalog)', () => {
     const merged = mergeWithSeeds([])
     for (const s of merged) {
-      expect(s.thumbnailUrl).toMatch(/^\/items\/catalog-seed\//)
+      expect(s.thumbnailUrl).toBe('')
     }
   })
 })
@@ -786,7 +786,9 @@ export function mergeWithSeeds(
 ): CatalogItem[] {
   const builtins: CatalogItem[] = BUILTIN_SEEDS.map((a) => ({
     ...a,
-    thumbnailUrl: `${SEED_DIR}/${a.filename.replace(/\.glb$/, '.thumb.webp')}`,
+    // Builtin thumbnails sont générés au runtime via ensureSeedThumbnails()
+    // et injectés par useCatalog en override. Placeholder vide ici.
+    thumbnailUrl: '',
   }))
   const custom: CatalogItem[] = customs.map((a) => ({
     ...a,
@@ -1088,6 +1090,9 @@ git commit -m "feat(glb-catalog): thumbnail renderer (WebGL2 offscreen) + user i
 
 **Files:**
 - Create: `packages/glb-catalog/src/api.ts`
+
+**Vérifications préalables (ne pas skip)** :
+- Pascal's `asset://` delete : `ASSET_PREFIX = 'asset_data:'` (confirmé via `packages/core/src/lib/asset-storage.ts:3`). Pas de `deleteAsset()` exposé — on utilise `del(\`asset_data:\${uuid}\`)` via `idb-keyval` directement.
 
 - [ ] **Step 1: Implement `api.ts`**
 
@@ -1704,11 +1709,16 @@ export function EditItemModal({ item, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
+  // Usage count : match par asset.src === pascalAssetUrl (bijectif, robuste).
+  // On n'ajoute PAS metadata.glbSource au ItemNode (Pascal ne propage pas
+  // AssetInput.metadata vers ItemNode.metadata — on éviterait d'avoir à
+  // intercepter createNode). Le match URL suffit.
   const usageCount = useScene((s) => {
     let count = 0
     for (const node of Object.values(s.nodes)) {
-      const meta = node.metadata as Record<string, unknown> | undefined
-      if (meta?.glbSource === item.id) count += 1
+      if (node.type !== 'item') continue
+      const itemNode = node as { asset?: { src?: string } }
+      if (itemNode.asset?.src === item.pascalAssetUrl) count += 1
     }
     return count
   })
@@ -1997,12 +2007,12 @@ export { GLBCatalogPanel } from './GLBCatalogPanel'
 export { toAssetInput } from './to-asset-input'
 ```
 
-- [ ] **Step 3: Check `useEditor` exposes phase/mode setters**
+- [ ] **Step 3: Typecheck**
 
 ```
-cd apps/editor && bun x tsc --noEmit 2>&1 | grep -E "(phase|mode|setPhase|setMode)" | head -5
+cd apps/editor && bun x tsc --noEmit 2>&1 | grep GLBCatalogPanel
 ```
-Expected: no errors. If `setPhase` or `setMode` doesn't exist or has different names, inspect `packages/editor/src/store/use-editor.tsx` and adapt (`useEditor.setState({ phase: 'furnish' })` is a fallback).
+Expected: no errors. (L'API `useEditor.setPhase/setMode` a été vérifiée dans le spike — voir Task 17 header.)
 
 - [ ] **Step 4: Commit**
 
@@ -2017,6 +2027,12 @@ git commit -m "feat(editor): GLBCatalogPanel wiring catalog + upload + edit moda
 
 **Files:**
 - Modify: `apps/editor/app/page.tsx`
+
+**Vérifications préalables (ne pas skip)** :
+- `useEditor` API (confirmé via `packages/editor/src/store/use-editor.tsx`) :
+  - `phase: 'site' | 'structure' | 'furnish'`, setter `setPhase(phase)`
+  - `mode: 'select' | 'edit' | 'delete' | 'build'`, setter `setMode(mode)`
+  - Le code Task 16 `editor.setPhase('furnish')` + `editor.setMode('build')` est correct.
 
 - [ ] **Step 1: Add Catalogue tab to `SIDEBAR_TABS`**
 
@@ -2081,19 +2097,19 @@ git commit -m "feat(editor): add Catalogue tab to sidebar"
 
 ---
 
-## Task 18: Seeds — créer 3 GLB placeholders
+## Task 18: Seeds — 3 GLB minimalistes + thumbnails générées au premier boot
 
 **Files:**
 - Create: `apps/editor/public/items/catalog-seed/light-ceiling.glb`
-- Create: `apps/editor/public/items/catalog-seed/light-ceiling.thumb.webp`
 - Create: `apps/editor/public/items/catalog-seed/volet-simple.glb`
-- Create: `apps/editor/public/items/catalog-seed/volet-simple.thumb.webp`
 - Create: `apps/editor/public/items/catalog-seed/prise-simple.glb`
-- Create: `apps/editor/public/items/catalog-seed/prise-simple.thumb.webp`
+- Modify: `packages/glb-catalog/src/storage/seeds.ts` (ajout `ensureSeedThumbnails()`)
+- Modify: `packages/glb-catalog/src/storage/db.ts` (ajout table `seedThumbnails`)
+- Modify: `packages/glb-catalog/src/hooks/use-catalog.ts` (hydrate au mount)
 
-**NOTE UTILISATEUR** : Les 3 GLB doivent idéalement être créés dans Blender avec les mesh names listés dans `storage/seeds.ts` (ex: `light_ceiling` + `glow_lampshade`). Les thumbnails peuvent être générées via la fonction `renderThumbnail()` du package lui-même (une fois les GLB prêts), ou à la main.
+**Choix** : au lieu de ship des `.thumb.webp` placeholders (risque de bytes invalides), les thumbnails des seeds sont **générées au premier boot** via `renderThumbnail(fetch(glb))` et persistées dans une table dexie dédiée `seedThumbnails` (keyed par seed id). Coût : ~1s de latence first-boot ; 0 après. Plus de problème de placeholder invalide + teste automatiquement `renderThumbnail` sur les fixtures.
 
-**Pour la progression du plan** (unblock l'intégration), on génère des GLBs minimalistes programmatiquement dans un script Node et on ship des thumbnails placeholders 256×256 WebP unis.
+**NOTE UTILISATEUR** : Les 3 GLB sont minimalistes (1 triangle par mesh) pour dé-bloquer. À remplacer par de vrais GLB Blender (mesh names conservés) en post-plan.
 
 - [ ] **Step 1: Créer le dossier**
 
@@ -2106,7 +2122,7 @@ mkdir -p apps/editor/public/items/catalog-seed
 Créer un fichier temp `scripts/generate-seeds.mjs` (racine repo) :
 
 ```js
-import { readFileSync, writeFileSync } from 'fs'
+import { writeFileSync } from 'fs'
 import { resolve } from 'path'
 
 const seeds = [
@@ -2141,9 +2157,7 @@ function makeGLB(meshNames) {
   const padded = jsonStr.padEnd(Math.ceil(jsonStr.length / 4) * 4, ' ')
   const jsonBuf = Buffer.from(padded)
 
-  const positions = new Float32Array([
-    0, 0, 0,    0, 1, 0,    0.5, 0, 0,
-  ])
+  const positions = new Float32Array([0, 0, 0, 0, 1, 0, 0.5, 0, 0])
   const binBuf = Buffer.from(positions.buffer)
   const binPadded = Buffer.concat([binBuf, Buffer.alloc((4 - (binBuf.length % 4)) % 4)])
 
@@ -2164,17 +2178,10 @@ function makeGLB(meshNames) {
   return Buffer.concat([header, jhead, jsonBuf, bhead, binPadded])
 }
 
-// Tiny 256×256 WebP placeholder (solid dark gray). Generated via a known
-// minimal WebP bytestream; for real seeds, replace with actual renders.
-const WEBP_PLACEHOLDER_BASE64 =
-  'UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA'
-
 for (const seed of seeds) {
-  const outGlb = resolve('apps/editor/public/items/catalog-seed', seed.filename)
-  writeFileSync(outGlb, makeGLB(seed.meshes))
-  const outWebp = outGlb.replace(/\.glb$/, '.thumb.webp')
-  writeFileSync(outWebp, Buffer.from(WEBP_PLACEHOLDER_BASE64, 'base64'))
-  console.log(`Wrote ${seed.filename} + thumb`)
+  const out = resolve('apps/editor/public/items/catalog-seed', seed.filename)
+  writeFileSync(out, makeGLB(seed.meshes))
+  console.log(`Wrote ${seed.filename}`)
 }
 ```
 
@@ -2184,25 +2191,191 @@ node scripts/generate-seeds.mjs
 rm scripts/generate-seeds.mjs
 ```
 
-- [ ] **Step 3: Vérifier les fichiers**
+Vérifier : `ls apps/editor/public/items/catalog-seed/` → 3 fichiers `.glb`, pas de `.webp`.
+
+- [ ] **Step 3: Ajouter la table `seedThumbnails` dans `storage/db.ts`**
+
+Éditer `packages/glb-catalog/src/storage/db.ts` :
+
+```diff
+ class CatalogDB extends Dexie {
+   assets!: EntityTable<GLBAsset, 'id'>
+   thumbnails!: EntityTable<ThumbnailRow, 'id'>
++  seedThumbnails!: EntityTable<ThumbnailRow, 'id'>
+
+   constructor() {
+     super('maison3d-glb-catalog')
+-    this.version(1).stores({
++    this.version(2).stores({
+       assets: 'id, category, createdAt',
+       thumbnails: 'id',
++      seedThumbnails: 'id',
+     })
+   }
+ }
+```
+
+Ajouter à la fin du fichier :
+
+```ts
+export async function dbGetSeedThumbnail(id: string): Promise<Blob | undefined> {
+  const row = await getDB().seedThumbnails.get(id)
+  return row?.thumb
+}
+
+export async function dbPutSeedThumbnail(id: string, thumb: Blob): Promise<void> {
+  await getDB().seedThumbnails.put({ id, thumb })
+}
+```
+
+- [ ] **Step 4: Ajouter `ensureSeedThumbnails()` dans `storage/seeds.ts`**
+
+Ajouter à la fin de `packages/glb-catalog/src/storage/seeds.ts` :
+
+```ts
+import { renderThumbnail } from '../thumbnails/render'
+import { dbGetSeedThumbnail, dbPutSeedThumbnail } from './db'
+
+/**
+ * Fetch + render + cache thumbnails for all BUILTIN_SEEDS. Idempotent :
+ * skip seeds déjà en cache. Safe to call multiple times (useCatalog le fait
+ * au mount).
+ */
+export async function ensureSeedThumbnails(): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  for (const seed of BUILTIN_SEEDS) {
+    let thumb = await dbGetSeedThumbnail(seed.id)
+    if (!thumb) {
+      try {
+        const resp = await fetch(seed.pascalAssetUrl)
+        if (!resp.ok) throw new Error(`seed fetch failed: ${resp.status}`)
+        const glbBlob = await resp.blob()
+        thumb = await renderThumbnail(glbBlob)
+        await dbPutSeedThumbnail(seed.id, thumb)
+      } catch (err) {
+        console.warn(`ensureSeedThumbnails: ${seed.id} failed`, err)
+        continue
+      }
+    }
+    result.set(seed.id, URL.createObjectURL(thumb))
+  }
+  return result
+}
+```
+
+- [ ] **Step 5: Modifier `use-catalog.ts` pour hydrater les seed thumbnails au mount**
+
+Éditer `packages/glb-catalog/src/hooks/use-catalog.ts`. Remplacer **intégralement** le corps :
+
+```ts
+import { liveQuery } from 'dexie'
+import { useEffect, useMemo, useState } from 'react'
+import type { CatalogItem, Category, GLBAsset } from '../schema'
+import { dbGetThumbnail } from '../storage/db'
+import { ensureSeedThumbnails, mergeWithSeeds } from '../storage/seeds'
+import { getDB } from '../storage/db'
+
+// Blob URL cache : keep URLs alive until deleteGLB explicit revoke or session end.
+// No ref-counting : < 100 items attendus, ~80 KB × N = négligeable.
+const thumbUrlCache = new Map<string, string>()
+
+function getOrCreateThumbUrl(assetId: string, thumb: Blob): string {
+  const existing = thumbUrlCache.get(assetId)
+  if (existing) return existing
+  const url = URL.createObjectURL(thumb)
+  thumbUrlCache.set(assetId, url)
+  return url
+}
+
+export function revokeThumbUrl(assetId: string): void {
+  const url = thumbUrlCache.get(assetId)
+  if (url) {
+    URL.revokeObjectURL(url)
+    thumbUrlCache.delete(assetId)
+  }
+}
+
+export function useCatalog(filter?: { category?: Category }): {
+  items: CatalogItem[]
+  isLoading: boolean
+} {
+  const [assets, setAssets] = useState<GLBAsset[]>([])
+  const [customThumbs, setCustomThumbs] = useState<Map<string, Blob>>(new Map())
+  const [seedThumbUrls, setSeedThumbUrls] = useState<Map<string, string>>(new Map())
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Hydrate seed thumbnails once at mount
+  useEffect(() => {
+    void ensureSeedThumbnails().then((map) => setSeedThumbUrls(map))
+  }, [])
+
+  // Subscribe custom assets
+  useEffect(() => {
+    const obs = liveQuery(() => getDB().assets.orderBy('createdAt').toArray())
+    const sub = obs.subscribe({
+      next: async (list) => {
+        setAssets(list)
+        const next = new Map<string, Blob>()
+        for (const a of list) {
+          const t = await dbGetThumbnail(a.id)
+          if (t) next.set(a.id, t)
+        }
+        setCustomThumbs(next)
+        setIsLoading(false)
+      },
+      error: (err) => {
+        console.error('useCatalog: liveQuery failed', err)
+        setIsLoading(false)
+      },
+    })
+    return () => sub.unsubscribe()
+  }, [])
+
+  const items = useMemo(() => {
+    const merged = mergeWithSeeds(assets, (asset) => {
+      const thumb = customThumbs.get(asset.id)
+      return thumb ? getOrCreateThumbUrl(asset.id, thumb) : ''
+    })
+    // Override builtin thumbnailUrl avec les URLs dynamiques générées
+    const withSeedThumbs = merged.map((item) =>
+      item.builtin && seedThumbUrls.has(item.id)
+        ? { ...item, thumbnailUrl: seedThumbUrls.get(item.id)! }
+        : item,
+    )
+    return filter?.category
+      ? withSeedThumbs.filter((i) => i.category === filter.category)
+      : withSeedThumbs
+  }, [assets, customThumbs, seedThumbUrls, filter?.category])
+
+  return { items, isLoading }
+}
+```
+
+Note : le `revokeThumbUrl(id)` est exporté pour être appelé par `deleteGLB` dans `api.ts`. **Ajouter également** dans `api.ts` `deleteGLB()`, après `dbDeleteAsset(id)` :
+
+```ts
+import { revokeThumbUrl } from './hooks/use-catalog'
+// ... dans deleteGLB, après dbDeleteAsset(id) :
+revokeThumbUrl(id)
+```
+
+- [ ] **Step 6: Typecheck**
 
 ```
-ls -la apps/editor/public/items/catalog-seed/
+cd packages/glb-catalog && bun x tsc --noEmit
 ```
-Expected: 6 fichiers (3 .glb + 3 .thumb.webp).
+Expected: no errors.
 
-- [ ] **Step 4: `bun dev` + vérifier onglet Catalogue**
+- [ ] **Step 7: `bun dev` + vérifier onglet Catalogue**
 
-Ouvrir http://localhost:3002/ → onglet Catalogue → **les 3 seeds doivent s'afficher** avec leurs thumbnails (placeholder gris uni pour le moment).
+Ouvrir http://localhost:3002/ → onglet Catalogue → **les 3 seeds doivent s'afficher après ~1s** (première génération). Reload → seeds instantanés (cache IDB).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```
-git add apps/editor/public/items/catalog-seed/
-git commit -m "feat(glb-catalog): add 3 minimal seed GLBs + placeholder thumbnails"
+git add apps/editor/public/items/catalog-seed/ packages/glb-catalog/src/storage/ packages/glb-catalog/src/hooks/use-catalog.ts packages/glb-catalog/src/api.ts
+git commit -m "feat(glb-catalog): 3 seed GLBs + first-boot thumbnail generation + IDB cache"
 ```
-
-**NOTE UTILISATEUR** : Les seeds sont minimalistes (1 triangle par mesh) et les thumbnails sont des placeholders gris. À remplacer ultérieurement par de vrais GLB Blender + thumbnails renderées via le renderer offscreen, en dehors de ce plan.
 
 ---
 
