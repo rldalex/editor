@@ -46,6 +46,20 @@ describe('SceneBundleManifestSchema', () => {
       ha: { bindingCount: 0, entities: [] },
       assets: [],
     }
-    expect(() => SceneBundleManifestSchema.parse(valid)).not.toThrow()
+    expect(SceneBundleManifestSchema.parse(valid)).toEqual(valid)
+  })
+
+  it('rejects invalid createdAt (non ISO-8601)', () => {
+    expect(() =>
+      SceneBundleManifestSchema.parse({
+        version: 1,
+        format: 'maison3d' as const,
+        createdAt: 'hier matin',
+        createdBy: { app: 'editor' as const, version: '0.1.0' },
+        scene: { nodeCount: 0, rootCount: 0 },
+        ha: { bindingCount: 0, entities: [] },
+        assets: [],
+      }),
+    ).toThrow()
   })
 })
